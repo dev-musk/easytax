@@ -1,35 +1,40 @@
 // ============================================
 // FILE: server/routes/invoices.js
+// UPDATE - Replace the createInvoice route
 // ============================================
 
-import express from 'express';
-import { protect } from '../middleware/auth.js';
-import Invoice from '../models/Invoice.js';
-import Client from '../models/Client.js';
-import Organization from '../models/Organization.js';
+import express from "express";
+import { protect } from "../middleware/auth.js";
+import Invoice from "../models/Invoice.js";
+import Client from "../models/Client.js";
+import Organization from "../models/Organization.js";
+import { calculateGSTBreakdown } from "../utils/gstCalculator.js";
 
 const router = express.Router();
 
 router.use(protect);
 
 // Get all invoices
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
     const { status, clientId } = req.query;
 
     const filter = { organization: organizationId };
-    
-    if (status && status !== 'ALL') {
+
+    if (status && status !== "ALL") {
       filter.status = status;
     }
-    
+
     if (clientId) {
       filter.client = clientId;
     }
 
     const invoices = await Invoice.find(filter)
-      .populate('client', 'companyName email gstin billingAddress billingCity billingState')
+      .populate(
+        "client",
+        "companyName email gstin billingAddress billingCity billingState"
+      )
       .sort({ createdAt: -1 });
 
     res.json(invoices);
@@ -39,7 +44,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single invoice
-router.get('/:id', async (req, res) => {
+router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
@@ -47,10 +52,10 @@ router.get('/:id', async (req, res) => {
     const invoice = await Invoice.findOne({
       _id: id,
       organization: organizationId,
-    }).populate('client');
+    }).populate("client");
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: "Invoice not found" });
     }
 
     res.json(invoice);
@@ -59,68 +64,49 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create invoice
-router.post('/', async (req, res) => {
+// Create invoice with proper GST calculation
+router.post("/", async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
     const data = req.body;
 
-    // Get organization for invoice numbering
-    const organization = await Organization.findById(organizationId);
-    
+    // Get organization and client
+    const [organization, client] = await Promise.all([
+      Organization.findById(organizationId),
+      Client.findById(data.clientId),
+    ]);
+
+    if (!client) {
+      return res.status(400).json({ error: "Client not found" });
+    }
+
     // Generate invoice number
     const invoiceNumber = `${organization.invoicePrefix}-${String(
       organization.nextInvoiceNumber
-    ).padStart(4, '0')}`;
+    ).padStart(4, "0")}`;
 
-    // Get client to determine state for GST calculation
-    const client = await Client.findById(data.clientId);
-    
-    if (!client) {
-      return res.status(400).json({ error: 'Client not found' });
-    }
-
-    // Calculate GST for each item
-    const items = data.items.map((item) => {
-      const amount = item.quantity * item.rate;
-      const gstAmount = (amount * item.gstRate) / 100;
-      
-      // Check if inter-state or intra-state
-      const isInterState = client.billingState !== organization.state;
-      
-      return {
-        itemType: 'SERVICE',
-        description: item.description,
-        hsnSacCode: item.hsnSacCode,
-        quantity: item.quantity,
-        unit: 'Pcs',
-        rate: item.rate,
-        amount: amount,
-        discount: 0,
-        gstRate: item.gstRate,
-        cgst: isInterState ? 0 : gstAmount / 2,
-        sgst: isInterState ? 0 : gstAmount / 2,
-        igst: isInterState ? gstAmount : 0,
-        total: amount + gstAmount,
-      };
-    });
+    // Calculate GST breakdown
+    const gstBreakdown = calculateGSTBreakdown(
+      data.items,
+      client.gstin,
+      organization.gstin
+    );
 
     // Calculate totals
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-    
+    const subtotal = gstBreakdown.items.reduce(
+      (sum, item) => sum + item.amount,
+      0
+    );
+
     let discountAmount = 0;
-    if (data.discountType === 'PERCENTAGE') {
+    if (data.discountType === "PERCENTAGE") {
       discountAmount = (subtotal * data.discountValue) / 100;
     } else {
       discountAmount = data.discountValue || 0;
     }
 
-    const cgst = items.reduce((sum, item) => sum + item.cgst, 0);
-    const sgst = items.reduce((sum, item) => sum + item.sgst, 0);
-    const igst = items.reduce((sum, item) => sum + item.igst, 0);
-    const totalTax = cgst + sgst + igst;
-
-    const totalAmount = subtotal - discountAmount + totalTax;
+    const taxableAmount = subtotal - discountAmount;
+    const totalAmount = taxableAmount + gstBreakdown.totalTax;
     const roundOff = Math.round(totalAmount) - totalAmount;
     const finalTotal = Math.round(totalAmount);
 
@@ -131,20 +117,20 @@ router.post('/', async (req, res) => {
       client: data.clientId,
       invoiceDate: data.invoiceDate,
       dueDate: data.dueDate,
-      items,
-      subtotal,
+      items: gstBreakdown.items,
+      subtotal: parseFloat(subtotal.toFixed(2)),
       discountType: data.discountType,
       discountValue: data.discountValue,
-      discountAmount,
-      cgst,
-      sgst,
-      igst,
-      totalTax,
-      roundOff,
+      discountAmount: parseFloat(discountAmount.toFixed(2)),
+      cgst: gstBreakdown.totalCGST,
+      sgst: gstBreakdown.totalSGST,
+      igst: gstBreakdown.totalIGST,
+      totalTax: gstBreakdown.totalTax,
+      roundOff: parseFloat(roundOff.toFixed(2)),
       totalAmount: finalTotal,
       paidAmount: 0,
       balanceAmount: finalTotal,
-      status: 'PENDING',
+      status: "PENDING",
       notes: data.notes,
       organization: organizationId,
     });
@@ -155,7 +141,9 @@ router.post('/', async (req, res) => {
     });
 
     // Populate and return
-    const populatedInvoice = await Invoice.findById(invoice._id).populate('client');
+    const populatedInvoice = await Invoice.findById(invoice._id).populate(
+      "client"
+    );
 
     res.status(201).json(populatedInvoice);
   } catch (error) {
@@ -164,7 +152,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update invoice
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
@@ -174,10 +162,10 @@ router.put('/:id', async (req, res) => {
       { _id: id, organization: organizationId },
       data,
       { new: true }
-    ).populate('client');
+    ).populate("client");
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: "Invoice not found" });
     }
 
     res.json(invoice);
@@ -187,7 +175,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete invoice
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
@@ -198,17 +186,17 @@ router.delete('/:id', async (req, res) => {
     });
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: "Invoice not found" });
     }
 
-    res.json({ message: 'Invoice deleted successfully' });
+    res.json({ message: "Invoice deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Generate and download PDF
-router.get('/:id/pdf', async (req, res) => {
+router.get("/:id/pdf", async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
@@ -216,23 +204,23 @@ router.get('/:id/pdf', async (req, res) => {
     const invoice = await Invoice.findOne({
       _id: id,
       organization: organizationId,
-    }).populate('client');
+    }).populate("client");
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: "Invoice not found" });
     }
 
     const organization = await Organization.findById(organizationId);
 
     // Import dynamically to avoid issues
-    const { generateInvoicePDF } = await import('../utils/pdfGenerator.js');
+    const { generateInvoicePDF } = await import("../utils/pdfGenerator.js");
     const html = generateInvoicePDF(invoice, organization);
 
     // For simple HTML to PDF conversion, we'll send the HTML
     // Client will use browser's print functionality
     // Or you can use Puppeteer on server (requires installation)
-    
-    res.setHeader('Content-Type', 'text/html');
+
+    res.setHeader("Content-Type", "text/html");
     res.send(html);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -240,7 +228,7 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 // Send invoice via email
-router.post('/:id/send-email', async (req, res) => {
+router.post("/:id/send-email", async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
@@ -249,16 +237,16 @@ router.post('/:id/send-email', async (req, res) => {
     const invoice = await Invoice.findOne({
       _id: id,
       organization: organizationId,
-    }).populate('client');
+    }).populate("client");
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: "Invoice not found" });
     }
 
     const organization = await Organization.findById(organizationId);
 
     // Generate PDF HTML
-    const { generateInvoicePDF } = await import('../utils/pdfGenerator.js');
+    const { generateInvoicePDF } = await import("../utils/pdfGenerator.js");
     const html = generateInvoicePDF(invoice, organization);
 
     // Email configuration (using nodemailer)
@@ -267,18 +255,31 @@ router.post('/:id/send-email', async (req, res) => {
       from: organization.email,
       to: to || invoice.client.email,
       cc: cc,
-      subject: subject || `Invoice ${invoice.invoiceNumber} from ${organization.name}`,
+      subject:
+        subject || `Invoice ${invoice.invoiceNumber} from ${organization.name}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #2563eb;">Invoice ${invoice.invoiceNumber}</h2>
           <p>Dear ${invoice.client.companyName},</p>
-          <p>${message || 'Please find attached invoice for your reference.'}</p>
+          <p>${
+            message || "Please find attached invoice for your reference."
+          }</p>
           <div style="background: #f3f4f6; padding: 20px; margin: 20px 0; border-radius: 8px;">
-            <p style="margin: 5px 0;"><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
-            <p style="margin: 5px 0;"><strong>Invoice Date:</strong> ${new Date(invoice.invoiceDate).toLocaleDateString('en-IN')}</p>
-            <p style="margin: 5px 0;"><strong>Due Date:</strong> ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}</p>
-            <p style="margin: 5px 0;"><strong>Amount:</strong> ₹${invoice.totalAmount.toLocaleString('en-IN')}</p>
-            <p style="margin: 5px 0;"><strong>Status:</strong> ${invoice.status}</p>
+            <p style="margin: 5px 0;"><strong>Invoice Number:</strong> ${
+              invoice.invoiceNumber
+            }</p>
+            <p style="margin: 5px 0;"><strong>Invoice Date:</strong> ${new Date(
+              invoice.invoiceDate
+            ).toLocaleDateString("en-IN")}</p>
+            <p style="margin: 5px 0;"><strong>Due Date:</strong> ${new Date(
+              invoice.dueDate
+            ).toLocaleDateString("en-IN")}</p>
+            <p style="margin: 5px 0;"><strong>Amount:</strong> ₹${invoice.totalAmount.toLocaleString(
+              "en-IN"
+            )}</p>
+            <p style="margin: 5px 0;"><strong>Status:</strong> ${
+              invoice.status
+            }</p>
           </div>
           <p>You can view and download the invoice PDF from the link below:</p>
           <a href="${process.env.CLIENT_URL}/invoices/${invoice._id}/view" 
@@ -286,11 +287,15 @@ router.post('/:id/send-email', async (req, res) => {
             View Invoice
           </a>
           <p style="margin-top: 30px; color: #666; font-size: 12px;">
-            If you have any questions, please contact us at ${organization.email}
+            If you have any questions, please contact us at ${
+              organization.email
+            }
           </p>
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
           <p style="color: #999; font-size: 11px; text-align: center;">
-            This is an automated email from ${organization.name}. Please do not reply to this email.
+            This is an automated email from ${
+              organization.name
+            }. Please do not reply to this email.
           </p>
         </div>
       `,
@@ -303,22 +308,22 @@ router.post('/:id/send-email', async (req, res) => {
 
     // Return success (actual email sending would happen here)
     // You can integrate with SendGrid, AWS SES, or any email service
-    res.json({ 
-      message: 'Email sent successfully',
-      emailConfig: emailConfig // For testing purposes
+    res.json({
+      message: "Email sent successfully",
+      emailConfig: emailConfig, // For testing purposes
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-
 // Record payment
-router.post('/:id/payments', async (req, res) => {
+router.post("/:id/payments", async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
-    const { amount, paymentDate, paymentMode, referenceNumber, notes } = req.body;
+    const { amount, paymentDate, paymentMode, referenceNumber, notes } =
+      req.body;
 
     const invoice = await Invoice.findOne({
       _id: id,
@@ -326,7 +331,7 @@ router.post('/:id/payments', async (req, res) => {
     });
 
     if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+      return res.status(404).json({ error: "Invoice not found" });
     }
 
     // Update invoice
@@ -335,9 +340,9 @@ router.post('/:id/payments', async (req, res) => {
 
     // Update status
     if (invoice.balanceAmount <= 0) {
-      invoice.status = 'PAID';
+      invoice.status = "PAID";
     } else if (invoice.paidAmount > 0) {
-      invoice.status = 'PARTIALLY_PAID';
+      invoice.status = "PARTIALLY_PAID";
     }
 
     await invoice.save();
@@ -347,6 +352,5 @@ router.post('/:id/payments', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 
 export default router;

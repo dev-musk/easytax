@@ -10,6 +10,11 @@ import authRoutes from './routes/auth.js';
 import clientRoutes from './routes/clients.js';
 import invoiceRoutes from './routes/invoices.js';
 import dashboardRoutes from './routes/dashboard.js';
+import productRoutes from './routes/products.js';
+import tdsConfigRoutes from './routes/tdsconfig.js';
+import recurringInvoiceRoutes from './routes/recurringInvoices.js';
+import whatsappRoutes from './routes/whatsapp.js';
+import analyticsRoutes from './routes/analytics.js';
 
 dotenv.config();
 
@@ -37,6 +42,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/tdsconfig', tdsConfigRoutes);
+app.use('/api/recurring-invoices', recurringInvoiceRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // 404 handler
 app.use((req, res) => {
