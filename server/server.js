@@ -15,6 +15,11 @@ import tdsConfigRoutes from './routes/tdsconfig.js';
 import recurringInvoiceRoutes from './routes/recurringInvoices.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import analyticsRoutes from './routes/analytics.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -32,6 +37,9 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -47,6 +55,7 @@ app.use('/api/tdsconfig', tdsConfigRoutes);
 app.use('/api/recurring-invoices', recurringInvoiceRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/auth', authRoutes);
 
 // 404 handler
 app.use((req, res) => {

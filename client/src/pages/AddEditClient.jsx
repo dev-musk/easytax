@@ -1,13 +1,13 @@
 // ============================================
 // FILE: client/src/pages/AddEditClient.jsx
-// NEW FILE - Create this
+// UPDATED - Replace your current AddEditClient.jsx
 // ============================================
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../utils/api';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Upload, X, Image as ImageIcon } from 'lucide-react';
 
 export default function AddEditClient() {
   const navigate = useNavigate();
@@ -15,6 +15,8 @@ export default function AddEditClient() {
   const isEditing = !!id;
 
   const [loading, setLoading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState(null);
   const [formData, setFormData] = useState({
     companyName: '',
     contactPerson: '',
@@ -23,6 +25,7 @@ export default function AddEditClient() {
     gstin: '',
     pan: '',
     isTaxable: true,
+    logo: '',
     billingAddress: '',
     billingCity: '',
     billingState: '',
@@ -46,6 +49,9 @@ export default function AddEditClient() {
     try {
       const response = await api.get(`/api/clients/${id}`);
       setFormData(response.data);
+      if (response.data.logo) {
+        setLogoPreview(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/${response.data.logo}`);
+      }
     } catch (error) {
       console.error('Error fetching client:', error);
       alert('Failed to fetch client details');
@@ -82,6 +88,72 @@ export default function AddEditClient() {
     }));
   };
 
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+
+    // Show preview immediately
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+
+    // If editing, upload immediately
+    if (isEditing) {
+      setUploadingLogo(true);
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      try {
+        const response = await api.post(`/api/clients/${id}/logo`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        setFormData((prev) => ({ ...prev, logo: response.data.logo }));
+        alert('Logo uploaded successfully');
+      } catch (error) {
+        console.error('Error uploading logo:', error);
+        alert('Failed to upload logo');
+        setLogoPreview(null);
+      } finally {
+        setUploadingLogo(false);
+      }
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!confirm('Remove client logo?')) return;
+
+    if (isEditing && formData.logo) {
+      try {
+        await api.delete(`/api/clients/${id}/logo`);
+        setFormData((prev) => ({ ...prev, logo: '' }));
+        setLogoPreview(null);
+        alert('Logo removed successfully');
+      } catch (error) {
+        console.error('Error removing logo:', error);
+        alert('Failed to remove logo');
+      }
+    } else {
+      setLogoPreview(null);
+      setFormData((prev) => ({ ...prev, logo: '' }));
+    }
+  };
+
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
@@ -112,6 +184,65 @@ export default function AddEditClient() {
               Basic Information
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Logo Upload */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Company Logo
+                </label>
+                <div className="flex items-start gap-4">
+                  {/* Logo Preview */}
+                  <div className="flex-shrink-0">
+                    {logoPreview ? (
+                      <div className="relative">
+                        <img
+                          src={logoPreview}
+                          alt="Logo preview"
+                          className="w-32 h-32 object-contain border-2 border-gray-200 rounded-lg bg-white p-2"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogo}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
+                        <ImageIcon className="w-8 h-8 text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Button */}
+                  <div className="flex-1">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                        disabled={uploadingLogo}
+                      />
+                      <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors inline-flex">
+                        <Upload className="w-4 h-4" />
+                        <span className="text-sm font-medium">
+                          {uploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                        </span>
+                      </div>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      PNG, JPG, GIF up to 5MB. Recommended: 300x300px
+                    </p>
+                    {!isEditing && logoPreview && (
+                      <p className="text-xs text-orange-600 mt-1">
+                        ⚠️ Logo will be uploaded after saving the client
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Company Name <span className="text-red-500">*</span>

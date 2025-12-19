@@ -4,6 +4,8 @@
 
 import Client from '../models/Client.js';
 import { validateGSTIN, validatePAN } from '../utils/validators.js';
+import fs from 'fs';
+import path from 'path';
 
 export const createClient = async (req, res) => {
   try {
@@ -142,15 +144,30 @@ export const deleteClient = async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
 
-    const client = await Client.findOneAndUpdate(
-      { _id: id, organization: organizationId },
-      { isActive: false },
-      { new: true }
-    );
+    const client = await Client.findOne({
+      _id: id,
+      organization: organizationId,
+    });
 
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
+
+    // Delete logo file if exists
+    if (client.logo) {
+      const logoPath = path.join(process.cwd(), client.logo);
+      if (fs.existsSync(logoPath)) {
+        try {
+          fs.unlinkSync(logoPath);
+        } catch (error) {
+          console.error('Error deleting logo file:', error);
+        }
+      }
+    }
+
+    // Soft delete - set isActive to false
+    client.isActive = false;
+    await client.save();
 
     res.json({ message: 'Client deleted successfully' });
   } catch (error) {
