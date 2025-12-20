@@ -1,31 +1,32 @@
 // ============================================
-// FILE: client/src/pages/AddEditInvoice.jsx
-// ENHANCED - With Line-wise Discount
+// FILE: client/src/pages/AddEditRecurringInvoice.jsx
+// NEW FILE - Create/Edit Recurring Invoice Templates
 // ============================================
 
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import api from "../utils/api";
-import { ArrowLeft, Save, Plus, Minus, Package, Percent } from "lucide-react";
+import { ArrowLeft, Save, Plus, Minus, Calendar, Percent } from "lucide-react";
 
-export default function AddEditInvoice() {
+export default function AddEditRecurringInvoice() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = !!id;
 
+  const [tdsConfigs, setTdsConfigs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
-  const [tdsConfigs, setTdsConfigs] = useState([]);
   const [formData, setFormData] = useState({
+    templateName: "",
     clientId: "",
     invoiceType: "TAX_INVOICE",
-    invoiceDate: new Date().toISOString().split("T")[0],
-    dueDate: "",
+    frequency: "MONTHLY",
+    startDate: new Date().toISOString().split("T")[0],
+    nextInvoiceDate: new Date().toISOString().split("T")[0],
     items: [
       {
-        productId: "",
         description: "",
         hsnSacCode: "",
         quantity: 1,
@@ -44,8 +45,8 @@ export default function AddEditInvoice() {
     discountValue: 0,
     tdsSection: "",
     tdsRate: 0,
-    tdsAmount: 0,
     notes: "",
+    isActive: true,
   });
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function AddEditInvoice() {
     fetchProducts();
     fetchTDSConfigs();
     if (isEditing) {
-      fetchInvoice();
+      fetchTemplate();
     }
   }, [id]);
 
@@ -68,12 +69,36 @@ export default function AddEditInvoice() {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get("/api/products", {
-        params: { isActive: "true" },
-      });
+      const response = await api.get("/api/products");
       setProducts(response.data || []);
     } catch (error) {
       console.error("Error fetching products:", error);
+    }
+  };
+
+  const fetchTemplate = async () => {
+    try {
+      const response = await api.get(`/api/recurring-invoices/${id}`);
+      const template = response.data;
+      setFormData({
+        templateName: template.templateName,
+        clientId: template.client._id,
+        invoiceType: template.invoiceType,
+        frequency: template.frequency,
+        startDate: template.startDate.split("T")[0],
+        nextInvoiceDate: template.nextInvoiceDate.split("T")[0],
+        items: template.items,
+        discountType: template.discountType,
+        discountValue: template.discountValue,
+        tdsSection: template.tdsSection || "",
+        tdsRate: template.tdsRate || 0,
+        notes: template.notes || "",
+        isActive: template.isActive,
+      });
+    } catch (error) {
+      console.error("Error fetching template:", error);
+      alert("Failed to fetch template");
+      navigate("/recurring-invoices");
     }
   };
 
@@ -86,44 +111,12 @@ export default function AddEditInvoice() {
     }
   };
 
-  const fetchInvoice = async () => {
-    try {
-      const response = await api.get(`/api/invoices/${id}`);
-      setFormData({
-        clientId: response.data.client?._id || "",
-        invoiceType: response.data.invoiceType,
-        invoiceDate: response.data.invoiceDate?.split("T")[0],
-        dueDate: response.data.dueDate?.split("T")[0],
-        items:
-          response.data.items?.map((item) => ({
-            ...item,
-            productId: "",
-            discountType: item.discountType || "PERCENTAGE",
-            discountValue: item.discountValue || 0,
-            discountAmount: item.discountAmount || 0,
-            taxableAmount: item.taxableAmount || item.amount,
-          })) || [],
-        discountType: response.data.discountType || "PERCENTAGE",
-        discountValue: response.data.discountValue || 0,
-        tdsSection: response.data.tdsSection || "",
-        tdsRate: response.data.tdsRate || 0,
-        tdsAmount: response.data.tdsAmount || 0,
-        notes: response.data.notes || "",
-      });
-    } catch (error) {
-      console.error("Error fetching invoice:", error);
-      alert("Failed to fetch invoice details");
-      navigate("/invoices");
-    }
-  };
-
   const handleAddItem = () => {
     setFormData({
       ...formData,
       items: [
         ...formData.items,
         {
-          productId: "",
           description: "",
           hsnSacCode: "",
           quantity: 1,
@@ -151,23 +144,7 @@ export default function AddEditInvoice() {
   const handleProductSelect = (index, productId) => {
     const newItems = [...formData.items];
 
-    if (productId === "custom") {
-      newItems[index] = {
-        productId: "custom",
-        description: "",
-        hsnSacCode: "",
-        quantity: 1,
-        unit: "PCS",
-        rate: 0,
-        gstRate: 18,
-        itemType: "PRODUCT",
-        discountType: "PERCENTAGE",
-        discountValue: 0,
-        discountAmount: 0,
-        taxableAmount: 0,
-        amount: 0,
-      };
-    } else if (productId) {
+    if (productId) {
       const product = products.find((p) => p._id === productId);
       if (product) {
         const quantity = newItems[index].quantity || 1;
@@ -175,7 +152,6 @@ export default function AddEditInvoice() {
         const baseAmount = quantity * rate;
 
         newItems[index] = {
-          productId: product._id,
           description: product.name,
           hsnSacCode: product.hsnSacCode || "",
           quantity: quantity,
@@ -190,43 +166,6 @@ export default function AddEditInvoice() {
           amount: baseAmount,
         };
       }
-    } else {
-      newItems[index].productId = "";
-    }
-
-    setFormData({ ...formData, items: newItems });
-  };
-
-  const calculateItemAmount = (item) => {
-    const baseAmount = item.quantity * item.rate;
-    let discountAmount = 0;
-
-    if (item.discountType === "PERCENTAGE") {
-      discountAmount = (baseAmount * item.discountValue) / 100;
-    } else {
-      discountAmount = item.discountValue;
-    }
-
-    const taxableAmount = baseAmount - discountAmount;
-    const amount = taxableAmount; // Amount after discount, before GST
-
-    return {
-      discountAmount,
-      taxableAmount,
-      amount,
-    };
-  };
-
-  const handleItemChange = (index, field, value) => {
-    const newItems = [...formData.items];
-    newItems[index][field] = value;
-
-    // Recalculate amounts whenever relevant fields change
-    if (["quantity", "rate", "discountType", "discountValue"].includes(field)) {
-      const calculated = calculateItemAmount(newItems[index]);
-      newItems[index].discountAmount = calculated.discountAmount;
-      newItems[index].taxableAmount = calculated.taxableAmount;
-      newItems[index].amount = calculated.amount;
     }
 
     setFormData({ ...formData, items: newItems });
@@ -251,8 +190,41 @@ export default function AddEditInvoice() {
     }
   };
 
+  const calculateItemAmount = (item) => {
+    const baseAmount = item.quantity * item.rate;
+    let discountAmount = 0;
+
+    if (item.discountType === "PERCENTAGE") {
+      discountAmount = (baseAmount * item.discountValue) / 100;
+    } else {
+      discountAmount = item.discountValue;
+    }
+
+    const taxableAmount = baseAmount - discountAmount;
+    const amount = taxableAmount;
+
+    return {
+      discountAmount,
+      taxableAmount,
+      amount,
+    };
+  };
+
+  const handleItemChange = (index, field, value) => {
+    const newItems = [...formData.items];
+    newItems[index][field] = value;
+
+    if (["quantity", "rate", "discountType", "discountValue"].includes(field)) {
+      const calculated = calculateItemAmount(newItems[index]);
+      newItems[index].discountAmount = calculated.discountAmount;
+      newItems[index].taxableAmount = calculated.taxableAmount;
+      newItems[index].amount = calculated.amount;
+    }
+
+    setFormData({ ...formData, items: newItems });
+  };
+
   const calculateTotals = () => {
-    // Calculate item-wise totals
     const itemsTotal = formData.items.reduce(
       (sum, item) => sum + item.quantity * item.rate,
       0
@@ -263,7 +235,6 @@ export default function AddEditInvoice() {
     );
     const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0);
 
-    // Calculate invoice-level discount
     let invoiceDiscountAmount = 0;
     if (formData.discountType === "PERCENTAGE") {
       invoiceDiscountAmount = (subtotal * formData.discountValue) / 100;
@@ -272,8 +243,6 @@ export default function AddEditInvoice() {
     }
 
     const taxableAmount = subtotal - invoiceDiscountAmount;
-
-    // Calculate GST on taxable amount (after all discounts)
     const totalTax = formData.items.reduce((sum, item) => {
       const itemTaxableAmount =
         item.amount - (item.amount * formData.discountValue) / 100;
@@ -281,11 +250,7 @@ export default function AddEditInvoice() {
     }, 0);
 
     const totalWithTax = taxableAmount + totalTax;
-
-    // TDS must be calculated on taxable amount (before GST)
-    const tdsAmount = (taxableAmount * formData.tdsRate) / 100;
-
-    // Final amount after TDS deduction
+    const tdsAmount = (totalWithTax * formData.tdsRate) / 100;
     const total = totalWithTax - tdsAmount;
 
     return {
@@ -306,36 +271,33 @@ export default function AddEditInvoice() {
     setLoading(true);
 
     try {
-      const totals = calculateTotals();
-
-      const invoiceData = {
-        clientId: formData.clientId,
+      const templateData = {
+        templateName: formData.templateName,
+        client: formData.clientId,
         invoiceType: formData.invoiceType,
-        invoiceDate: formData.invoiceDate,
-        dueDate: formData.dueDate,
-        items: formData.items.map(({ productId, ...item }) => item),
+        frequency: formData.frequency,
+        startDate: formData.startDate,
+        nextInvoiceDate: formData.nextInvoiceDate,
+        items: formData.items,
         discountType: formData.discountType,
         discountValue: formData.discountValue,
         tdsSection: formData.tdsSection || null,
         tdsRate: formData.tdsRate || 0,
-        tdsAmount: totals.tdsAmount || 0,
         notes: formData.notes,
+        isActive: formData.isActive,
       };
 
-      console.log("Submitting invoice data:", invoiceData);
-
       if (isEditing) {
-        await api.put(`/api/invoices/${id}`, invoiceData);
-        alert("Invoice updated successfully");
+        await api.put(`/api/recurring-invoices/${id}`, templateData);
+        alert("Template updated successfully");
       } else {
-        await api.post("/api/invoices", invoiceData);
-        alert("Invoice created successfully");
+        await api.post("/api/recurring-invoices", templateData);
+        alert("Template created successfully");
       }
-      navigate("/invoices");
+      navigate("/recurring-invoices");
     } catch (error) {
-      console.error("Error saving invoice:", error);
-      console.error("Error details:", error.response?.data);
-      alert(error.response?.data?.error || "Failed to save invoice");
+      console.error("Error saving template:", error);
+      alert(error.response?.data?.error || "Failed to save template");
     } finally {
       setLoading(false);
     }
@@ -349,29 +311,47 @@ export default function AddEditInvoice() {
         {/* Header */}
         <div className="mb-6">
           <button
-            onClick={() => navigate("/invoices")}
+            onClick={() => navigate("/recurring-invoices")}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
-            Back to Invoices
+            Back to Recurring Invoices
           </button>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isEditing ? "Edit Invoice" : "Create New Invoice"}
+            {isEditing
+              ? "Edit Recurring Template"
+              : "Create Recurring Template"}
           </h1>
           <p className="text-gray-600 mt-1">
             {isEditing
-              ? "Update invoice details"
-              : "Create a new invoice for your client"}
+              ? "Update recurring invoice template"
+              : "Create a template for automatic invoice generation"}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Basic Details */}
+          {/* Template Details */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Basic Details
+              Template Details
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Template Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Monthly Retainer - ABC Corp"
+                  value={formData.templateName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, templateName: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client <span className="text-red-500">*</span>
@@ -410,17 +390,46 @@ export default function AddEditInvoice() {
                   <option value="DEBIT_NOTE">Debit Note</option>
                 </select>
               </div>
+            </div>
+          </div>
+
+          {/* Recurring Schedule */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <Calendar className="w-5 h-5 inline mr-2" />
+              Recurring Schedule
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Frequency <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={formData.frequency}
+                  onChange={(e) =>
+                    setFormData({ ...formData, frequency: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="DAILY">Daily</option>
+                  <option value="WEEKLY">Weekly</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="YEARLY">Yearly</option>
+                </select>
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Invoice Date <span className="text-red-500">*</span>
+                  Start Date <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   required
-                  value={formData.invoiceDate}
+                  value={formData.startDate}
                   onChange={(e) =>
-                    setFormData({ ...formData, invoiceDate: e.target.value })
+                    setFormData({ ...formData, startDate: e.target.value })
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -428,18 +437,31 @@ export default function AddEditInvoice() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Due Date <span className="text-red-500">*</span>
+                  Next Invoice Date <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   required
-                  value={formData.dueDate}
+                  value={formData.nextInvoiceDate}
                   onChange={(e) =>
-                    setFormData({ ...formData, dueDate: e.target.value })
+                    setFormData({
+                      ...formData,
+                      nextInvoiceDate: e.target.value,
+                    })
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
+            </div>
+
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-900">
+                <strong>How it works:</strong> Invoice will be generated
+                automatically on the "Next Invoice Date" and the date will be
+                updated based on frequency. For example, if frequency is
+                "Monthly" and next date is "1st Jan", the system will generate
+                invoice on 1st Jan, then update next date to 1st Feb.
+              </p>
             </div>
           </div>
 
@@ -483,20 +505,16 @@ export default function AddEditInvoice() {
                   {/* Product Selection */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <label className="block text-xs font-medium text-blue-900 mb-2">
-                      <Package className="w-4 h-4 inline mr-1" />
-                      Select from Product Catalog (or choose Custom Item)
+                      Select from Product Catalog (optional)
                     </label>
                     <select
-                      value={item.productId}
+                      value=""
                       onChange={(e) =>
                         handleProductSelect(index, e.target.value)
                       }
                       className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     >
-                      <option value="">-- Select Product/Service --</option>
-                      <option value="custom">
-                        ✏️ Custom Item (Manual Entry)
-                      </option>
+                      <option value="">-- Or enter manually below --</option>
                       <optgroup label="Products">
                         {products
                           .filter((p) => p.type === "PRODUCT")
@@ -520,7 +538,7 @@ export default function AddEditInvoice() {
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                     <div className="md:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Description *
@@ -532,38 +550,6 @@ export default function AddEditInvoice() {
                         value={item.description}
                         onChange={(e) =>
                           handleItemChange(index, "description", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Type *
-                      </label>
-                      <select
-                        required
-                        value={item.itemType}
-                        onChange={(e) =>
-                          handleItemChange(index, "itemType", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="PRODUCT">Product</option>
-                        <option value="SERVICE">Service</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        HSN/SAC
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="998314"
-                        value={item.hsnSacCode}
-                        onChange={(e) =>
-                          handleItemChange(index, "hsnSacCode", e.target.value)
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
@@ -603,15 +589,11 @@ export default function AddEditInvoice() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="PCS">Pcs</option>
-                        <option value="KG">Kg</option>
-                        <option value="LITER">Liter</option>
-                        <option value="METER">Meter</option>
-                        <option value="BOX">Box</option>
                         <option value="HOUR">Hour</option>
                         <option value="DAY">Day</option>
                         <option value="MONTH">Month</option>
+                        <option value="YEAR">Year</option>
                         <option value="SET">Set</option>
-                        <option value="UNIT">Unit</option>
                       </select>
                     </div>
 
@@ -635,53 +617,8 @@ export default function AddEditInvoice() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                     </div>
-                  </div>
 
-                  {/* Item-level Discount & GST */}
-                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3 pt-2 border-t border-gray-200">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-orange-600 mb-1">
-                        <Percent className="w-3 h-3 inline mr-1" />
-                        Item Discount Type
-                      </label>
-                      <select
-                        value={item.discountType}
-                        onChange={(e) =>
-                          handleItemChange(
-                            index,
-                            "discountType",
-                            e.target.value
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-orange-50"
-                      >
-                        <option value="PERCENTAGE">Percentage (%)</option>
-                        <option value="FIXED">Fixed Amount (₹)</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-orange-600 mb-1">
-                        Discount Value
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.discountValue}
-                        onChange={(e) =>
-                          handleItemChange(
-                            index,
-                            "discountValue",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        placeholder="0"
-                        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-orange-50"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
+                    <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         GST % *
                       </label>
@@ -706,37 +643,10 @@ export default function AddEditInvoice() {
                     </div>
                   </div>
 
-                  {/* Item Summary */}
-                  <div className="bg-white rounded-lg p-3 space-y-1 text-xs">
-                    <div className="flex justify-between text-gray-600">
-                      <span>Base Amount (Qty × Rate):</span>
+                  <div className="bg-white rounded-lg p-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Amount:</span>
                       <span className="font-medium text-gray-900">
-                        ₹
-                        {(item.quantity * item.rate).toLocaleString("en-IN", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                    {item.discountAmount > 0 && (
-                      <div className="flex justify-between text-orange-600">
-                        <span>
-                          Item Discount{" "}
-                          {item.discountType === "PERCENTAGE"
-                            ? `(${item.discountValue}%)`
-                            : ""}
-                          :
-                        </span>
-                        <span className="font-medium">
-                          -₹
-                          {item.discountAmount.toLocaleString("en-IN", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-gray-900 pt-1 border-t border-gray-200">
-                      <span className="font-semibold">Taxable Amount:</span>
-                      <span className="font-bold">
                         ₹
                         {item.amount.toLocaleString("en-IN", {
                           minimumFractionDigits: 2,
@@ -749,13 +659,13 @@ export default function AddEditInvoice() {
             </div>
           </div>
 
-          {/* Invoice-level Discount, TDS & Notes */}
+          {/* Invoice Discount & TDS - NEW SECTION */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Invoice Deductions & Notes
+              Invoice-Level Deductions
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Invoice Discount Type
@@ -787,8 +697,12 @@ export default function AddEditInvoice() {
                       discountValue: parseFloat(e.target.value) || 0,
                     })
                   }
+                  placeholder="0"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Applied after item-level discounts
+                </p>
               </div>
 
               <div>
@@ -817,7 +731,13 @@ export default function AddEditInvoice() {
                 )}
               </div>
             </div>
+          </div>
 
+          {/* Notes */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Additional Information
+            </h2>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Notes
@@ -834,119 +754,40 @@ export default function AddEditInvoice() {
             </div>
           </div>
 
-          {/* Invoice Summary */}
+          {/* Summary */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow-sm border border-blue-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Invoice Summary
+              Template Summary
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Items Total:</span>
-                  <span className="font-medium text-gray-900">
-                    ₹
-                    {totals.itemsTotal.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                {totals.itemDiscounts > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-orange-600">Item Discounts:</span>
-                    <span className="font-medium text-orange-600">
-                      -₹
-                      {totals.itemDiscounts.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">
-                    Subtotal (after item discounts):
-                  </span>
-                  <span className="font-medium text-gray-900">
-                    ₹
-                    {totals.subtotal.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                {totals.invoiceDiscountAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">
-                      Invoice Discount{" "}
-                      {formData.discountType === "PERCENTAGE"
-                        ? `(${formData.discountValue}%)`
-                        : ""}
-                      :
-                    </span>
-                    <span className="font-medium text-red-600">
-                      -₹
-                      {totals.invoiceDiscountAmount.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm pt-2 border-t border-blue-200">
-                  <span className="text-gray-600">Taxable Amount:</span>
-                  <span className="font-medium text-gray-900">
-                    ₹
-                    {totals.taxableAmount.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-medium text-gray-900">
+                  ₹
+                  {totals.subtotal.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
               </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">GST:</span>
-                  <span className="font-medium text-gray-900">
-                    ₹
-                    {totals.totalTax.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm pt-2 border-t border-blue-200">
-                  <span className="text-gray-600">Total (with GST):</span>
-                  <span className="font-medium text-gray-900">
-                    ₹
-                    {totals.totalWithTax.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                {totals.tdsAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">
-                      TDS{" "}
-                      {formData.tdsSection
-                        ? `(${formData.tdsSection} @ ${formData.tdsRate}%)`
-                        : ""}
-                      :
-                    </span>
-                    <span className="font-medium text-orange-600">
-                      -₹
-                      {totals.tdsAmount.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                <div className="pt-2 border-t-2 border-blue-300 flex justify-between">
-                  <span className="font-semibold text-gray-900">
-                    Net Payable:
-                  </span>
-                  <span className="text-2xl font-bold text-blue-600">
-                    ₹
-                    {totals.total.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">GST:</span>
+                <span className="font-medium text-gray-900">
+                  ₹
+                  {totals.totalTax.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              <div className="pt-2 border-t-2 border-blue-300 flex justify-between">
+                <span className="font-semibold text-gray-900">
+                  Total per Invoice:
+                </span>
+                <span className="text-2xl font-bold text-blue-600">
+                  ₹
+                  {totals.total.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
               </div>
             </div>
           </div>
@@ -955,7 +796,7 @@ export default function AddEditInvoice() {
           <div className="flex gap-3 justify-end bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <button
               type="button"
-              onClick={() => navigate("/invoices")}
+              onClick={() => navigate("/recurring-invoices")}
               className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
               disabled={loading}
             >
@@ -970,8 +811,8 @@ export default function AddEditInvoice() {
               {loading
                 ? "Saving..."
                 : isEditing
-                ? "Update Invoice"
-                : "Create Invoice"}
+                ? "Update Template"
+                : "Create Template"}
             </button>
           </div>
         </form>

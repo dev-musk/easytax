@@ -15,6 +15,7 @@ import tdsConfigRoutes from './routes/tdsconfig.js';
 import recurringInvoiceRoutes from './routes/recurringInvoices.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import analyticsRoutes from './routes/analytics.js';
+import organizationRoutes from './routes/organization.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -56,6 +57,7 @@ app.use('/api/recurring-invoices', recurringInvoiceRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/organization', organizationRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -273,7 +273,7 @@ export default function InvoiceView() {
                       <p className="text-sm font-medium text-gray-900">{item.description}</p>
                     </td>
                     <td className="py-3 px-2 text-center text-sm text-gray-600">
-                      {item.hsnSac || '-'}
+                      {item.hsnSacCode || '-'}
                     </td>
                     <td className="py-3 px-2 text-center text-sm text-gray-900">
                       {item.quantity}

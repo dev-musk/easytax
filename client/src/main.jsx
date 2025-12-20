@@ -3,34 +3,36 @@
 // UPDATE - Add InvoiceView and OutstandingReports routes
 // ============================================
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import './index.css';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Clients from './pages/Clients';
-import AddEditClient from './pages/AddEditClient';
-import Products from './pages/Products';
-import AddEditProduct from './pages/AddEditProduct';
-import Invoices from './pages/Invoices';
-import AddEditInvoice from './pages/AddEditInvoice';
-import InvoiceView from './pages/InvoiceView';
-import OutstandingReports from './pages/OutstandingReports';
-import AgeingReport from './pages/AgeingReport';
-import TDSSettings from './pages/TDSSettings';
-import RecurringInvoices from './pages/RecurringInvoices';
-import WhatsAppSettings from './pages/WhatsAppSettings';
-import Analytics from './pages/Analytics';
-import ClientProfitability from './pages/ClientProfitability';
-import { useAuthStore } from './store/authStore';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import "./index.css";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Clients from "./pages/Clients";
+import AddEditClient from "./pages/AddEditClient";
+import Products from "./pages/Products";
+import AddEditProduct from "./pages/AddEditProduct";
+import Invoices from "./pages/Invoices";
+import AddEditInvoice from "./pages/AddEditInvoice";
+import InvoiceView from "./pages/InvoiceView";
+import OutstandingReports from "./pages/OutstandingReports";
+import AgeingReport from "./pages/AgeingReport";
+import TDSSettings from "./pages/TDSSettings";
+import RecurringInvoices from "./pages/RecurringInvoices";
+import WhatsAppSettings from "./pages/WhatsAppSettings";
+import Analytics from "./pages/Analytics";
+import ClientProfitability from "./pages/ClientProfitability";
+import AddEditRecurringInvoice from "./pages/AddEditRecurringInvoice";
+import OrganizationSettings from "./pages/OrganizationSettings";
+import { useAuthStore } from "./store/authStore";
 
 function PrivateRoute({ children }) {
   const user = useAuthStore((state) => state.user);
   return user ? children : <Navigate to="/login" />;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
@@ -124,7 +126,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             </PrivateRoute>
           }
         />
-        
+
         {/* NEW: Invoice View Route - For viewing and recording payments */}
         <Route
           path="/invoices/view/:id"
@@ -136,6 +138,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         />
 
         {/* Settings Routes */}
+        <Route
+          path="/settings/organization"
+          element={
+            <PrivateRoute>
+              <OrganizationSettings />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/settings/tds"
           element={
@@ -181,6 +191,23 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           }
         />
 
+        <Route
+          path="/recurring-invoices/add"
+          element={
+            <PrivateRoute>
+              <AddEditRecurringInvoice />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/recurring-invoices/edit/:id"
+          element={
+            <PrivateRoute>
+              <AddEditRecurringInvoice />
+            </PrivateRoute>
+          }
+        />
+
         {/* Analytics Routes */}
         <Route
           path="/analytics"
@@ -201,7 +228,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
         {/* Default Route */}
         <Route path="/" element={<Navigate to="/dashboard" />} />
-        
+
         {/* Catch all - redirect to dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>

@@ -23,6 +23,7 @@ import {
   RefreshCw,
   MessageSquare,
   PieChart,
+  Building2,
 } from 'lucide-react';
 
 export default function Layout({ children }) {
@@ -54,9 +55,10 @@ export default function Layout({ children }) {
   ];
 
   const settingsMenu = [
-    { name: 'TDS Settings', href: '/settings/tds', icon: Percent },
-    { name: 'WhatsApp Settings', href: '/settings/whatsapp', icon: MessageSquare },
-  ];
+  { name: 'Company Settings', href: '/settings/organization', icon: Building2 }, // ADD THIS
+  { name: 'TDS Settings', href: '/settings/tds', icon: Percent },
+  { name: 'WhatsApp Settings', href: '/settings/whatsapp', icon: MessageSquare },
+];
 
   const isActive = (path) => {
     if (path === '/reports') {

@@ -4,6 +4,7 @@
 // ============================================
 
 import express from 'express';
+import mongoose from 'mongoose';
 import { protect } from '../middleware/auth.js';
 import RecurringInvoice from '../models/RecurringInvoice.js';
 import Invoice from '../models/Invoice.js';
@@ -148,82 +149,108 @@ router.post('/:id/generate', async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
 
+    // Get recurring template
     const recurring = await RecurringInvoice.findOne({
       _id: id,
       organization: organizationId,
-    });
+    }).populate('client');
 
     if (!recurring) {
       return res.status(404).json({ error: 'Recurring invoice not found' });
     }
 
-    // Calculate next invoice number
-    const lastInvoice = await Invoice.findOne({ organization: organizationId })
-      .sort({ invoiceNumber: -1 });
-    
-    let nextNumber = 1;
-    if (lastInvoice && lastInvoice.invoiceNumber) {
-      const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1]) + 1;
-      }
+    if (!recurring.client) {
+      return res.status(400).json({ error: 'Client not found for this template' });
     }
-    const invoiceNumber = `INV-${String(nextNumber).padStart(5, '0')}`;
 
-    // Create new invoice from template
+    // Get organization details
+    const organization = await mongoose.model('Organization').findById(organizationId);
+    
+    if (!organization) {
+      return res.status(400).json({ error: 'Organization not found' });
+    }
+
+    // Import GST calculator
+    const { calculateGSTBreakdown } = await import('../utils/gstCalculator.js');
+
+    // Calculate GST breakdown using organization and client GSTIN
+    const gstBreakdown = calculateGSTBreakdown(
+      recurring.items,
+      recurring.client.gstin || '',
+      organization.gstin || ''
+    );
+
+    // Calculate invoice number
+    const invoiceNumber = `${organization.invoicePrefix || 'INV'}-${String(
+      organization.nextInvoiceNumber || 1
+    ).padStart(5, '0')}`;
+
+    // Calculate subtotal
+    const subtotal = gstBreakdown.items.reduce((sum, item) => sum + item.amount, 0);
+
+    // Calculate discount
+    let discountAmount = 0;
+    if (recurring.discountType === 'PERCENTAGE') {
+      discountAmount = (subtotal * (recurring.discountValue || 0)) / 100;
+    } else {
+      discountAmount = recurring.discountValue || 0;
+    }
+
+    // Calculate taxable amount and total
+    const taxableAmount = subtotal - discountAmount;
+    const totalTax = gstBreakdown.totalTax;
+    const totalWithTax = taxableAmount + totalTax;
+
+    // Calculate TDS
+    const tdsAmount = (totalWithTax * (recurring.tdsRate || 0)) / 100;
+
+    // Calculate final total
+    const totalAmount = totalWithTax - tdsAmount;
+    const roundOff = Math.round(totalAmount) - totalAmount;
+    const finalTotal = Math.round(totalAmount);
+
+    // Calculate due date (30 days from now by default)
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 30);
+
+    // Create invoice data
     const invoiceData = {
       invoiceNumber,
-      client: recurring.client,
-      invoiceType: recurring.invoiceType,
+      invoiceType: recurring.invoiceType || 'TAX_INVOICE',
+      client: recurring.client._id,
       invoiceDate: new Date(),
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-      items: recurring.items,
-      discountType: recurring.discountType,
-      discountValue: recurring.discountValue,
-      tdsSection: recurring.tdsSection,
-      tdsRate: recurring.tdsRate,
-      tdsAmount: 0, // Calculate this
-      notes: recurring.notes,
-      organization: organizationId,
+      dueDate: dueDate,
+      items: gstBreakdown.items,
+      subtotal: parseFloat(subtotal.toFixed(2)),
+      discountType: recurring.discountType || 'PERCENTAGE',
+      discountValue: recurring.discountValue || 0,
+      discountAmount: parseFloat(discountAmount.toFixed(2)),
+      cgst: gstBreakdown.totalCGST,
+      sgst: gstBreakdown.totalSGST,
+      igst: gstBreakdown.totalIGST,
+      totalTax: gstBreakdown.totalTax,
+      tdsApplicable: (recurring.tdsRate || 0) > 0,
+      tdsRate: recurring.tdsRate || 0,
+      tdsAmount: parseFloat(tdsAmount.toFixed(2)),
+      roundOff: parseFloat(roundOff.toFixed(2)),
+      totalAmount: finalTotal,
+      paidAmount: 0,
+      balanceAmount: finalTotal,
       status: 'PENDING',
+      notes: recurring.notes || '',
+      organization: organizationId,
+      isRecurring: true,
       recurringInvoiceId: recurring._id,
     };
 
-    // Calculate amounts
-    const subtotal = recurring.items.reduce((sum, item) => sum + item.amount, 0);
-    let discountAmount = 0;
-    if (recurring.discountType === 'PERCENTAGE') {
-      discountAmount = (subtotal * recurring.discountValue) / 100;
-    } else {
-      discountAmount = recurring.discountValue;
-    }
-    const taxableAmount = subtotal - discountAmount;
-    const totalTax = recurring.items.reduce(
-      (sum, item) => sum + (item.amount * item.gstRate) / 100,
-      0
-    );
-    const totalWithTax = taxableAmount + totalTax;
-    const tdsAmount = (totalWithTax * recurring.tdsRate) / 100;
-    const totalAmount = totalWithTax - tdsAmount;
-
-    invoiceData.subtotalAmount = subtotal;
-    invoiceData.discountAmount = discountAmount;
-    invoiceData.taxableAmount = taxableAmount;
-    invoiceData.cgstAmount = totalTax / 2;
-    invoiceData.sgstAmount = totalTax / 2;
-    invoiceData.igstAmount = 0;
-    invoiceData.tdsAmount = tdsAmount;
-    invoiceData.totalAmount = totalAmount;
-    invoiceData.paidAmount = 0;
-    invoiceData.balanceAmount = totalAmount;
-
+    // Create the invoice
     const invoice = await Invoice.create(invoiceData);
 
-    // Update recurring invoice
-    recurring.invoicesGenerated += 1;
+    // Update recurring template
+    recurring.invoicesGenerated = (recurring.invoicesGenerated || 0) + 1;
     recurring.lastGeneratedDate = new Date();
-    
-    // Calculate next invoice date
+
+    // Calculate next invoice date based on frequency
     const nextDate = new Date(recurring.nextInvoiceDate);
     switch (recurring.frequency) {
       case 'DAILY':
@@ -241,15 +268,32 @@ router.post('/:id/generate', async (req, res) => {
       case 'YEARLY':
         nextDate.setFullYear(nextDate.getFullYear() + 1);
         break;
+      default:
+        nextDate.setMonth(nextDate.getMonth() + 1);
     }
     recurring.nextInvoiceDate = nextDate;
-    
+
     await recurring.save();
 
-    res.json({ invoice, recurring });
+    // Increment organization's invoice number
+    await organization.updateOne({ $inc: { nextInvoiceNumber: 1 } });
+
+    // Populate the invoice
+    const populatedInvoice = await Invoice.findById(invoice._id).populate('client');
+
+    res.json({ 
+      success: true,
+      invoice: populatedInvoice, 
+      recurring: recurring,
+      message: 'Invoice generated successfully'
+    });
   } catch (error) {
     console.error('Error generating invoice:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: error.message,
+      details: error.stack
+    });
   }
 });
 

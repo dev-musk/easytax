@@ -29,7 +29,7 @@ const recurringInvoiceSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, min: 0 },
         unit: {
           type: String,
-          enum: ['PCS', 'KG', 'LITER', 'METER', 'BOX', 'HOUR', 'DAY', 'MONTH', 'SET', 'UNIT'],
+          enum: ['PCS', 'KG', 'LITER', 'METER', 'BOX', 'HOUR', 'DAY', 'MONTH', 'YEAR', 'SET', 'UNIT'],
           required: true,
         },
         rate: { type: Number, required: true, min: 0 },
