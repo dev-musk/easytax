@@ -1,6 +1,7 @@
 // ============================================
 // FILE: server/utils/pdfGenerator.js
-// NEW FILE - Generate professional invoice PDF HTML
+// ENHANCED - Includes ALL Phase 1 Features
+// Logo, Bank Details, Signature, Amount in Words, CIN, Notes
 // ============================================
 
 export const generateInvoicePDF = (invoice, organization) => {
@@ -20,6 +21,10 @@ export const generateInvoicePDF = (invoice, organization) => {
   };
 
   const isInterstate = invoice.igst > 0;
+  const showLogo = organization?.logo && organization?.displaySettings?.showCompanyLogo !== false;
+  const showBankDetails = organization?.bankDetails && organization?.displaySettings?.showBankDetails !== false;
+  const showSignature = organization?.authorizedSignatory && organization?.displaySettings?.showAuthorizedSignature !== false;
+  const showAmountInWords = organization?.displaySettings?.amountInWords !== false && invoice.amountInWords;
 
   return `
 <!DOCTYPE html>
@@ -59,6 +64,13 @@ export const generateInvoicePDF = (invoice, organization) => {
       margin-bottom: 30px;
       padding-bottom: 20px;
       border-bottom: 3px solid #2563eb;
+    }
+
+    .company-logo {
+      max-height: 80px;
+      max-width: 200px;
+      object-fit: contain;
+      margin-bottom: 15px;
     }
 
     .company-details h1 {
@@ -116,6 +128,11 @@ export const generateInvoicePDF = (invoice, organization) => {
     .status-partially-paid {
       background-color: #dbeafe;
       color: #1e40af;
+    }
+
+    .status-draft {
+      background-color: #f3f4f6;
+      color: #374151;
     }
 
     .parties-section {
@@ -296,6 +313,29 @@ export const generateInvoicePDF = (invoice, organization) => {
       font-weight: bold;
     }
 
+    /* Amount in Words Section */
+    .amount-in-words {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #dbeafe;
+      border-left: 4px solid #2563eb;
+      border-radius: 4px;
+    }
+
+    .amount-in-words h4 {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #1e40af;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .amount-in-words p {
+      font-size: 12px;
+      color: #1e3a8a;
+      font-weight: 600;
+    }
+
     .notes-section {
       margin-bottom: 20px;
       padding: 15px;
@@ -339,6 +379,44 @@ export const generateInvoicePDF = (invoice, organization) => {
       line-height: 1.8;
     }
 
+    /* Bank Details Section */
+    .bank-details {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #dcfce7;
+      border: 1px solid #86efac;
+      border-radius: 4px;
+    }
+
+    .bank-details h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #166534;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .bank-details-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .bank-detail-item {
+      font-size: 10px;
+    }
+
+    .bank-detail-item .label {
+      color: #15803d;
+      font-weight: 500;
+    }
+
+    .bank-detail-item .value {
+      color: #14532d;
+      font-weight: 600;
+      margin-left: 5px;
+    }
+
     .footer {
       text-align: center;
       padding-top: 20px;
@@ -356,6 +434,13 @@ export const generateInvoicePDF = (invoice, organization) => {
       padding-right: 15px;
     }
 
+    .signature-image {
+      max-height: 60px;
+      max-width: 150px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+
     .signature-line {
       display: inline-block;
       width: 200px;
@@ -366,6 +451,18 @@ export const generateInvoicePDF = (invoice, organization) => {
 
     .signature-text {
       font-size: 11px;
+      color: #6b7280;
+    }
+
+    .signature-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1f2937;
+      margin-top: 5px;
+    }
+
+    .signature-designation {
+      font-size: 10px;
       color: #6b7280;
     }
 
@@ -395,6 +492,8 @@ export const generateInvoicePDF = (invoice, organization) => {
     <!-- Header -->
     <div class="invoice-header">
       <div class="company-details">
+        ${showLogo ? `<img src="${process.env.BASE_URL || 'http://localhost:5000'}/${organization.logo}" alt="Company Logo" class="company-logo" />` : ''}
+        
         <h1>${organization.name || 'Your Company'}</h1>
         ${organization.address ? `<p>${organization.address}</p>` : ''}
         ${
@@ -404,6 +503,7 @@ export const generateInvoicePDF = (invoice, organization) => {
         }
         ${organization.gstin ? `<p><strong>GSTIN:</strong> ${organization.gstin}</p>` : ''}
         ${organization.pan ? `<p><strong>PAN:</strong> ${organization.pan}</p>` : ''}
+        ${organization.cin ? `<p><strong>CIN:</strong> ${organization.cin}</p>` : ''}
         ${organization.email ? `<p><strong>Email:</strong> ${organization.email}</p>` : ''}
         ${organization.phone ? `<p><strong>Phone:</strong> ${organization.phone}</p>` : ''}
       </div>
@@ -490,12 +590,12 @@ export const generateInvoicePDF = (invoice, organization) => {
             <td>
               <div class="item-description">${item.description}</div>
             </td>
-            <td class="text-center">${item.hsnSac || '-'}</td>
+            <td class="text-center">${item.hsnSacCode || '-'}</td>
             <td class="text-center">${item.quantity}</td>
             <td class="text-right">${formatCurrency(item.rate)}</td>
             <td class="text-center">${item.gstRate}%</td>
             <td class="text-right">${formatCurrency(
-              item.cgst + item.sgst + item.igst || 0
+              (item.cgst || 0) + (item.sgst || 0) + (item.igst || 0)
             )}</td>
             <td class="text-right">${formatCurrency(item.amount)}</td>
           </tr>
@@ -592,6 +692,18 @@ export const generateInvoicePDF = (invoice, organization) => {
       </div>
     </div>
 
+    <!-- Amount in Words - CRITICAL GST REQUIREMENT -->
+    ${
+      showAmountInWords
+        ? `
+    <div class="amount-in-words">
+      <h4>Amount in Words</h4>
+      <p>${invoice.amountInWords}</p>
+    </div>
+    `
+        : ''
+    }
+
     <!-- Notes -->
     ${
       invoice.notes
@@ -615,14 +727,42 @@ export const generateInvoicePDF = (invoice, organization) => {
       </p>
     </div>
 
+    <!-- Bank Details for Payment -->
+    ${
+      showBankDetails
+        ? `
+    <div class="bank-details">
+      <h4>Bank Details for Payment</h4>
+      <div class="bank-details-grid">
+        ${organization.bankDetails.bankName ? `<div class="bank-detail-item"><span class="label">Bank Name:</span><span class="value">${organization.bankDetails.bankName}</span></div>` : ''}
+        ${organization.bankDetails.accountHolderName ? `<div class="bank-detail-item"><span class="label">Account Holder:</span><span class="value">${organization.bankDetails.accountHolderName}</span></div>` : ''}
+        ${organization.bankDetails.accountNumber ? `<div class="bank-detail-item"><span class="label">Account Number:</span><span class="value">${organization.bankDetails.accountNumber}</span></div>` : ''}
+        ${organization.bankDetails.ifscCode ? `<div class="bank-detail-item"><span class="label">IFSC Code:</span><span class="value">${organization.bankDetails.ifscCode}</span></div>` : ''}
+        ${organization.bankDetails.branchName ? `<div class="bank-detail-item"><span class="label">Branch:</span><span class="value">${organization.bankDetails.branchName}</span></div>` : ''}
+        ${organization.bankDetails.upiId ? `<div class="bank-detail-item"><span class="label">UPI ID:</span><span class="value">${organization.bankDetails.upiId}</span></div>` : ''}
+      </div>
+    </div>
+    `
+        : ''
+    }
+
     <!-- Signature -->
+    ${
+      showSignature
+        ? `
     <div class="signature-section">
       <div>
+        ${organization.authorizedSignatory.signatureImage ? `<img src="${process.env.BASE_URL || 'http://localhost:5000'}/${organization.authorizedSignatory.signatureImage}" alt="Authorized Signature" class="signature-image" />` : ''}
         <div class="signature-line">
           <div class="signature-text">Authorized Signature</div>
+          ${organization.authorizedSignatory.name ? `<div class="signature-name">${organization.authorizedSignatory.name}</div>` : ''}
+          ${organization.authorizedSignatory.designation ? `<div class="signature-designation">${organization.authorizedSignatory.designation}</div>` : ''}
         </div>
       </div>
     </div>
+    `
+        : ''
+    }
 
     <!-- Footer -->
     <div class="footer">

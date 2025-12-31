@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/routes/recurringInvoices.js
-// NEW FILE - Recurring Invoice Routes
+// ULTIMATE FINAL FIX - All Invoice model fields
 // ============================================
 
 import express from 'express';
@@ -8,10 +8,13 @@ import mongoose from 'mongoose';
 import { protect } from '../middleware/auth.js';
 import RecurringInvoice from '../models/RecurringInvoice.js';
 import Invoice from '../models/Invoice.js';
+import Organization from '../models/Organization.js';
+import Client from '../models/Client.js';
+import { calculateGSTBreakdown } from '../utils/gstCalculator.js';
+import { amountToWords } from '../utils/numberToWords.js';
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
 router.use(protect);
 
 // Get all recurring invoices
@@ -143,13 +146,15 @@ router.patch('/:id/toggle-status', async (req, res) => {
   }
 });
 
-// Generate invoice now (manual trigger)
+// Generate invoice now (manual trigger) - ULTIMATE FINAL FIX
 router.post('/:id/generate', async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
 
-    // Get recurring template
+    console.log('🔄 Starting invoice generation for template:', id);
+
+    // Get recurring template with populated client
     const recurring = await RecurringInvoice.findOne({
       _id: id,
       organization: organizationId,
@@ -159,81 +164,202 @@ router.post('/:id/generate', async (req, res) => {
       return res.status(404).json({ error: 'Recurring invoice not found' });
     }
 
-    if (!recurring.client) {
+    // Get client separately to ensure all data
+    const client = await Client.findById(recurring.client._id);
+    if (!client) {
       return res.status(400).json({ error: 'Client not found for this template' });
     }
 
     // Get organization details
-    const organization = await mongoose.model('Organization').findById(organizationId);
-    
+    const organization = await Organization.findById(organizationId);
     if (!organization) {
       return res.status(400).json({ error: 'Organization not found' });
     }
 
-    // Import GST calculator
-    const { calculateGSTBreakdown } = await import('../utils/gstCalculator.js');
+    console.log('✅ Loaded template, client, and organization');
 
-    // Calculate GST breakdown using organization and client GSTIN
+    // Prepare items with amounts
+    const preparedItems = recurring.items.map(item => {
+      const quantity = parseFloat(item.quantity) || 0;
+      const rate = parseFloat(item.rate) || 0;
+      const amount = quantity * rate;
+
+      return {
+        description: item.description || '',
+        hsnSacCode: item.hsnSacCode || '999293',
+        quantity: quantity,
+        unit: item.unit || 'UNIT',
+        rate: rate,
+        gstRate: parseFloat(item.gstRate) || 0,
+        itemType: item.itemType || 'SERVICE',
+        amount: amount,
+      };
+    });
+
+    console.log('✅ Prepared items:', preparedItems.length, 'items');
+    console.log('📊 Item amounts:', preparedItems.map(i => i.amount));
+
+    // Call GST calculator
     const gstBreakdown = calculateGSTBreakdown(
-      recurring.items,
-      recurring.client.gstin || '',
+      preparedItems,
+      client.gstin || '',
       organization.gstin || ''
     );
 
-    // Calculate invoice number
-    const invoiceNumber = `${organization.invoicePrefix || 'INV'}-${String(
-      organization.nextInvoiceNumber || 1
-    ).padStart(5, '0')}`;
+    console.log('✅ GST breakdown calculated');
+    console.log('📊 GST breakdown items:', gstBreakdown.items?.length || 0);
 
-    // Calculate subtotal
-    const subtotal = gstBreakdown.items.reduce((sum, item) => sum + item.amount, 0);
+    // Calculate subtotal from GST breakdown
+    const subtotal = gstBreakdown.items.reduce((sum, item) => {
+      const itemAmount = parseFloat(item.taxableValue || item.amount || 0);
+      console.log(`  Item: ${item.description?.substring(0, 20)} = ₹${itemAmount}`);
+      return sum + itemAmount;
+    }, 0);
 
-    // Calculate discount
-    let discountAmount = 0;
-    if (recurring.discountType === 'PERCENTAGE') {
-      discountAmount = (subtotal * (recurring.discountValue || 0)) / 100;
-    } else {
-      discountAmount = recurring.discountValue || 0;
+    console.log('📊 Subtotal calculated:', subtotal);
+
+    if (isNaN(subtotal) || subtotal === 0) {
+      throw new Error('Failed to calculate subtotal');
     }
 
-    // Calculate taxable amount and total
-    const taxableAmount = subtotal - discountAmount;
-    const totalTax = gstBreakdown.totalTax;
-    const totalWithTax = taxableAmount + totalTax;
+    // Calculate discount
+    const discountType = recurring.discountType || 'PERCENTAGE';
+    const discountValue = parseFloat(recurring.discountValue) || 0;
+    
+    let discountAmount = 0;
+    if (discountValue > 0) {
+      if (discountType === 'PERCENTAGE') {
+        discountAmount = (subtotal * discountValue) / 100;
+      } else {
+        discountAmount = discountValue;
+      }
+    }
+
+    console.log('📊 Discount:', discountAmount);
+
+    // Calculate taxable amount
+    const taxableAmount = Math.max(0, subtotal - discountAmount);
+    console.log('📊 Taxable amount:', taxableAmount);
+
+    // Get GST totals
+    const totalTax = parseFloat(gstBreakdown.totalTax) || 0;
+    const totalCGST = parseFloat(gstBreakdown.totalCGST) || 0;
+    const totalSGST = parseFloat(gstBreakdown.totalSGST) || 0;
+    const totalIGST = parseFloat(gstBreakdown.totalIGST) || 0;
+
+    console.log('📊 Tax breakdown:', { totalCGST, totalSGST, totalIGST, totalTax });
 
     // Calculate TDS
-    const tdsAmount = (totalWithTax * (recurring.tdsRate || 0)) / 100;
+    const tdsRate = parseFloat(recurring.tdsRate) || 0;
+    const tdsAmount = tdsRate > 0 ? (taxableAmount * tdsRate) / 100 : 0;
+    console.log('📊 TDS:', tdsAmount);
 
-    // Calculate final total
+    // Calculate final totals
+    const totalWithTax = taxableAmount + totalTax;
     const totalAmount = totalWithTax - tdsAmount;
     const roundOff = Math.round(totalAmount) - totalAmount;
     const finalTotal = Math.round(totalAmount);
 
-    // Calculate due date (30 days from now by default)
+    console.log('✅ All calculations complete');
+    console.log('📊 Final amounts:', {
+      subtotal: subtotal.toFixed(2),
+      discountAmount: discountAmount.toFixed(2),
+      taxableAmount: taxableAmount.toFixed(2),
+      totalTax: totalTax.toFixed(2),
+      tdsAmount: tdsAmount.toFixed(2),
+      roundOff: roundOff.toFixed(2),
+      finalTotal: finalTotal
+    });
+
+    // Validate calculations
+    const amounts = [subtotal, discountAmount, taxableAmount, totalTax, tdsAmount, roundOff, finalTotal];
+    if (amounts.some(amt => isNaN(amt))) {
+      throw new Error('Invalid calculation: NaN detected');
+    }
+
+    // Calculate amount in words
+    const amountInWordsText = amountToWords(finalTotal);
+
+    // Generate invoice number
+    const invoiceNumber = `${organization.invoicePrefix || 'INV'}-${String(
+      organization.nextInvoiceNumber || 1
+    ).padStart(5, '0')}`;
+
+    // Calculate due date
     const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
+    dueDate.setDate(dueDate.getDate() + (organization.defaultPaymentTerms || 30));
+
+    console.log('💾 Creating invoice...');
+
+    // ====== CRITICAL: Map ALL required fields for Invoice model ======
+    const invoiceItems = gstBreakdown.items.map(item => {
+      const quantity = parseFloat(item.quantity) || 0;
+      const rate = parseFloat(item.rate) || 0;
+      const gstRate = parseFloat(item.gstRate) || 0;
+      
+      // Calculate base amount (qty * rate)
+      const baseAmount = quantity * rate;
+      
+      // Taxable amount is same as base amount (before tax)
+      const itemTaxableAmount = baseAmount;
+      
+      // Calculate GST on this item
+      const itemTax = (itemTaxableAmount * gstRate) / 100;
+      
+      // Total amount including tax
+      const itemTotalAmount = itemTaxableAmount + itemTax;
+
+      return {
+        description: item.description || '',
+        hsnSacCode: item.hsnSacCode || '999293',
+        quantity: quantity,
+        unit: item.unit || 'UNIT',
+        rate: rate,
+        gstRate: gstRate,
+        cgst: parseFloat(item.cgst) || 0,
+        sgst: parseFloat(item.sgst) || 0,
+        igst: parseFloat(item.igst) || 0,
+        // ✅ Required fields for Invoice model:
+        amount: itemTotalAmount,              // Total including tax
+        taxableAmount: itemTaxableAmount,     // Amount before tax
+        baseAmount: baseAmount,               // Quantity * Rate
+        taxableValue: itemTaxableAmount,      // Same as taxableAmount
+        totalAmount: itemTotalAmount,         // Same as amount
+        itemType: item.itemType || 'SERVICE',
+      };
+    });
+
+    console.log('📦 Prepared', invoiceItems.length, 'items for invoice');
+    console.log('📦 First item check:', {
+      description: invoiceItems[0]?.description,
+      amount: invoiceItems[0]?.amount,
+      taxableAmount: invoiceItems[0]?.taxableAmount,
+      baseAmount: invoiceItems[0]?.baseAmount,
+    });
 
     // Create invoice data
     const invoiceData = {
       invoiceNumber,
       invoiceType: recurring.invoiceType || 'TAX_INVOICE',
-      client: recurring.client._id,
+      client: client._id,
       invoiceDate: new Date(),
       dueDate: dueDate,
-      items: gstBreakdown.items,
+      items: invoiceItems,
       subtotal: parseFloat(subtotal.toFixed(2)),
-      discountType: recurring.discountType || 'PERCENTAGE',
-      discountValue: recurring.discountValue || 0,
+      discountType: discountType,
+      discountValue: discountValue,
       discountAmount: parseFloat(discountAmount.toFixed(2)),
-      cgst: gstBreakdown.totalCGST,
-      sgst: gstBreakdown.totalSGST,
-      igst: gstBreakdown.totalIGST,
-      totalTax: gstBreakdown.totalTax,
-      tdsApplicable: (recurring.tdsRate || 0) > 0,
-      tdsRate: recurring.tdsRate || 0,
+      cgst: parseFloat(totalCGST.toFixed(2)),
+      sgst: parseFloat(totalSGST.toFixed(2)),
+      igst: parseFloat(totalIGST.toFixed(2)),
+      totalTax: parseFloat(totalTax.toFixed(2)),
+      tdsApplicable: tdsRate > 0,
+      tdsSection: recurring.tdsSection || null,
+      tdsRate: tdsRate,
       tdsAmount: parseFloat(tdsAmount.toFixed(2)),
       roundOff: parseFloat(roundOff.toFixed(2)),
       totalAmount: finalTotal,
+      amountInWords: amountInWordsText,
       paidAmount: 0,
       balanceAmount: finalTotal,
       status: 'PENDING',
@@ -243,14 +369,18 @@ router.post('/:id/generate', async (req, res) => {
       recurringInvoiceId: recurring._id,
     };
 
+    console.log('💾 Invoice data prepared, creating in database...');
+
     // Create the invoice
     const invoice = await Invoice.create(invoiceData);
+
+    console.log('✅ Invoice created:', invoice.invoiceNumber);
 
     // Update recurring template
     recurring.invoicesGenerated = (recurring.invoicesGenerated || 0) + 1;
     recurring.lastGeneratedDate = new Date();
 
-    // Calculate next invoice date based on frequency
+    // Calculate next invoice date
     const nextDate = new Date(recurring.nextInvoiceDate);
     switch (recurring.frequency) {
       case 'DAILY':
@@ -275,11 +405,19 @@ router.post('/:id/generate', async (req, res) => {
 
     await recurring.save();
 
+    console.log('✅ Template updated - next date:', nextDate);
+
     // Increment organization's invoice number
-    await organization.updateOne({ $inc: { nextInvoiceNumber: 1 } });
+    await Organization.findByIdAndUpdate(organizationId, {
+      $inc: { nextInvoiceNumber: 1 },
+    });
+
+    console.log('✅ Organization invoice number incremented');
 
     // Populate the invoice
     const populatedInvoice = await Invoice.findById(invoice._id).populate('client');
+
+    console.log('🎉 Invoice generation complete!');
 
     res.json({ 
       success: true,
@@ -288,11 +426,11 @@ router.post('/:id/generate', async (req, res) => {
       message: 'Invoice generated successfully'
     });
   } catch (error) {
-    console.error('Error generating invoice:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Error generating invoice:', error.message);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({ 
       error: error.message,
-      details: error.stack
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

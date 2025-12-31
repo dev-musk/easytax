@@ -1,23 +1,89 @@
 // ============================================
 // FILE: client/src/pages/AddEditInvoice.jsx
-// ENHANCED - With Line-wise Discount
+// PHASE 4 - With Duplicate Invoice Handling
 // ============================================
 
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom"; // ✅ Added useLocation
 import Layout from "../components/Layout";
 import api from "../utils/api";
 import { ArrowLeft, Save, Plus, Minus, Package, Percent } from "lucide-react";
 
+// ✅ NUMBER TO WORDS CONVERTER - CLIENT SIDE
+const convertTwoDigit = (n) => {
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  if (n < 10) return ones[n];
+  if (n < 20) return teens[n - 10];
+  const tenDigit = Math.floor(n / 10);
+  const oneDigit = n % 10;
+  return tens[tenDigit] + (oneDigit > 0 ? ' ' + ones[oneDigit] : '');
+};
+
+const numberToWords = (num) => {
+  if (num === 0) return 'Zero Rupees Only';
+  if (num < 0) return 'Minus ' + numberToWords(Math.abs(num));
+
+  num = Math.floor(num);
+
+  const crore = Math.floor(num / 10000000);
+  const lakh = Math.floor((num % 10000000) / 100000);
+  const thousand = Math.floor((num % 100000) / 1000);
+  const hundred = Math.floor((num % 1000) / 100);
+  const remainder = Math.floor(num % 100);
+
+  let words = '';
+
+  if (crore > 0) {
+    if (crore > 99) {
+      words += numberToWords(crore).replace(' Rupees Only', '') + ' Crore ';
+    } else {
+      words += convertTwoDigit(crore) + ' Crore ';
+    }
+  }
+
+  if (lakh > 0) words += convertTwoDigit(lakh) + ' Lakh ';
+  if (thousand > 0) words += convertTwoDigit(thousand) + ' Thousand ';
+  if (hundred > 0) words += convertTwoDigit(hundred) + ' Hundred ';
+  if (remainder > 0) {
+    if (words.length > 0) words += 'and ';
+    words += convertTwoDigit(remainder) + ' ';
+  }
+
+  return words.trim() + ' Rupees Only';
+};
+
+const amountToWords = (amount) => {
+  amount = Math.round(amount * 100) / 100;
+  const rupees = Math.floor(amount);
+  const paise = Math.round((amount - rupees) * 100);
+
+  let words = numberToWords(rupees);
+
+  if (paise > 0) {
+    words = words.replace(' Only', '') + ' and ' + convertTwoDigit(paise) + ' Paise Only';
+  }
+
+  return words;
+};
+
 export default function AddEditInvoice() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation(); // ✅ PHASE 4: Get location state
   const isEditing = !!id;
+  
+  // ✅ PHASE 4: Get duplicate data from location state
+  const duplicateData = location.state?.duplicateFrom;
+  const isDuplicate = location.state?.isDuplicate;
 
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
   const [tdsConfigs, setTdsConfigs] = useState([]);
+  
   const [formData, setFormData] = useState({
     clientId: "",
     invoiceType: "TAX_INVOICE",
@@ -46,16 +112,79 @@ export default function AddEditInvoice() {
     tdsRate: 0,
     tdsAmount: 0,
     notes: "",
+    eInvoice: {
+      enabled: false,
+      irn: '',
+      ackNo: '',
+      ackDate: '',
+      status: 'NOT_GENERATED',
+    },
+    eWayBill: {
+      enabled: false,
+      ewbNumber: '',
+      ewbDate: '',
+      validUpto: '',
+      transportMode: 'ROAD',
+      vehicleNumber: '',
+      distance: 0,
+      transporterName: '',
+      status: 'NOT_GENERATED',
+    },
+    template: 'MODERN',
   });
 
   useEffect(() => {
     fetchClients();
     fetchProducts();
     fetchTDSConfigs();
+    
     if (isEditing) {
       fetchInvoice();
+    } else if (isDuplicate && duplicateData) {
+      // ✅ PHASE 4: Pre-fill form with duplicate data
+      console.log('📋 Duplicating invoice:', duplicateData);
+      setFormData({
+        clientId: duplicateData.client?._id || "",
+        invoiceType: duplicateData.invoiceType,
+        invoiceDate: new Date().toISOString().split("T")[0], // Today's date
+        dueDate: "", // Clear due date for user to set
+        items: duplicateData.items?.map((item) => ({
+          ...item,
+          productId: "",
+          discountType: item.discountType || "PERCENTAGE",
+          discountValue: item.discountValue || 0,
+          discountAmount: item.discountAmount || 0,
+          taxableAmount: item.taxableAmount || item.amount,
+        })) || [],
+        discountType: duplicateData.discountType || "PERCENTAGE",
+        discountValue: duplicateData.discountValue || 0,
+        tdsSection: duplicateData.tdsSection || "",
+        tdsRate: duplicateData.tdsRate || 0,
+        tdsAmount: 0, // Recalculated on submit
+        notes: duplicateData.notes || "",
+        // Don't copy E-Invoice/E-Way Bill data
+        eInvoice: {
+          enabled: false,
+          irn: '',
+          ackNo: '',
+          ackDate: '',
+          status: 'NOT_GENERATED',
+        },
+        eWayBill: {
+          enabled: false,
+          ewbNumber: '',
+          ewbDate: '',
+          validUpto: '',
+          transportMode: 'ROAD',
+          vehicleNumber: '',
+          distance: 0,
+          transporterName: '',
+          status: 'NOT_GENERATED',
+        },
+        template: duplicateData.template || 'MODERN',
+      });
     }
-  }, [id]);
+  }, [id, isDuplicate, duplicateData]);
 
   const fetchClients = async () => {
     try {
@@ -109,6 +238,25 @@ export default function AddEditInvoice() {
         tdsRate: response.data.tdsRate || 0,
         tdsAmount: response.data.tdsAmount || 0,
         notes: response.data.notes || "",
+        eInvoice: response.data.eInvoice || {
+          enabled: false,
+          irn: '',
+          ackNo: '',
+          ackDate: '',
+          status: 'NOT_GENERATED',
+        },
+        eWayBill: response.data.eWayBill || {
+          enabled: false,
+          ewbNumber: '',
+          ewbDate: '',
+          validUpto: '',
+          transportMode: 'ROAD',
+          vehicleNumber: '',
+          distance: 0,
+          transporterName: '',
+          status: 'NOT_GENERATED',
+        },
+        template: response.data.template || 'MODERN',
       });
     } catch (error) {
       console.error("Error fetching invoice:", error);
@@ -208,7 +356,7 @@ export default function AddEditInvoice() {
     }
 
     const taxableAmount = baseAmount - discountAmount;
-    const amount = taxableAmount; // Amount after discount, before GST
+    const amount = taxableAmount;
 
     return {
       discountAmount,
@@ -221,7 +369,6 @@ export default function AddEditInvoice() {
     const newItems = [...formData.items];
     newItems[index][field] = value;
 
-    // Recalculate amounts whenever relevant fields change
     if (["quantity", "rate", "discountType", "discountValue"].includes(field)) {
       const calculated = calculateItemAmount(newItems[index]);
       newItems[index].discountAmount = calculated.discountAmount;
@@ -252,7 +399,6 @@ export default function AddEditInvoice() {
   };
 
   const calculateTotals = () => {
-    // Calculate item-wise totals
     const itemsTotal = formData.items.reduce(
       (sum, item) => sum + item.quantity * item.rate,
       0
@@ -263,7 +409,6 @@ export default function AddEditInvoice() {
     );
     const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0);
 
-    // Calculate invoice-level discount
     let invoiceDiscountAmount = 0;
     if (formData.discountType === "PERCENTAGE") {
       invoiceDiscountAmount = (subtotal * formData.discountValue) / 100;
@@ -273,7 +418,6 @@ export default function AddEditInvoice() {
 
     const taxableAmount = subtotal - invoiceDiscountAmount;
 
-    // Calculate GST on taxable amount (after all discounts)
     const totalTax = formData.items.reduce((sum, item) => {
       const itemTaxableAmount =
         item.amount - (item.amount * formData.discountValue) / 100;
@@ -281,11 +425,7 @@ export default function AddEditInvoice() {
     }, 0);
 
     const totalWithTax = taxableAmount + totalTax;
-
-    // TDS must be calculated on taxable amount (before GST)
     const tdsAmount = (taxableAmount * formData.tdsRate) / 100;
-
-    // Final amount after TDS deduction
     const total = totalWithTax - tdsAmount;
 
     return {
@@ -320,6 +460,9 @@ export default function AddEditInvoice() {
         tdsRate: formData.tdsRate || 0,
         tdsAmount: totals.tdsAmount || 0,
         notes: formData.notes,
+        eInvoice: formData.eInvoice,
+        eWayBill: formData.eWayBill,
+        template: formData.template,
       };
 
       console.log("Submitting invoice data:", invoiceData);
@@ -329,7 +472,7 @@ export default function AddEditInvoice() {
         alert("Invoice updated successfully");
       } else {
         await api.post("/api/invoices", invoiceData);
-        alert("Invoice created successfully");
+        alert(isDuplicate ? "Duplicate invoice created successfully" : "Invoice created successfully");
       }
       navigate("/invoices");
     } catch (error) {
@@ -355,12 +498,15 @@ export default function AddEditInvoice() {
             <ArrowLeft className="w-5 h-5" />
             Back to Invoices
           </button>
+          {/* ✅ PHASE 4: Updated title for duplicate */}
           <h1 className="text-2xl font-bold text-gray-900">
-            {isEditing ? "Edit Invoice" : "Create New Invoice"}
+            {isEditing ? "Edit Invoice" : isDuplicate ? "Duplicate Invoice" : "Create New Invoice"}
           </h1>
           <p className="text-gray-600 mt-1">
             {isEditing
               ? "Update invoice details"
+              : isDuplicate
+              ? "Creating a copy of existing invoice"
               : "Create a new invoice for your client"}
           </p>
         </div>
@@ -834,7 +980,296 @@ export default function AddEditInvoice() {
             </div>
           </div>
 
-          {/* Invoice Summary */}
+          {/* ✅ PHASE 3: E-INVOICE SECTION */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="eInvoiceEnabled"
+                  checked={formData.eInvoice?.enabled || false}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      eInvoice: { ...formData.eInvoice, enabled: e.target.checked },
+                    })
+                  }
+                  className="w-4 h-4 text-blue-600"
+                />
+                <label htmlFor="eInvoiceEnabled" className="text-sm font-semibold text-blue-900">
+                  E-Invoice (Manual Entry)
+                </label>
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                  For turnover &gt; ₹5 Crore
+                </span>
+              </div>
+
+              {formData.eInvoice?.enabled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      IRN (Invoice Reference Number)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.eInvoice?.irn || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eInvoice: { ...formData.eInvoice, irn: e.target.value },
+                        })
+                      }
+                      placeholder="Enter IRN from GST Portal"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Acknowledgement Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.eInvoice?.ackNo || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eInvoice: { ...formData.eInvoice, ackNo: e.target.value },
+                        })
+                      }
+                      placeholder="Ack No from GST Portal"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ack Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.eInvoice?.ackDate?.split('T')[0] || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eInvoice: { ...formData.eInvoice, ackDate: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Status
+                    </label>
+                    <select
+                      value={formData.eInvoice?.status || 'NOT_GENERATED'}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eInvoice: { ...formData.eInvoice, status: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="NOT_GENERATED">Not Generated</option>
+                      <option value="GENERATED">Generated</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-blue-600 mt-3">
+                💡 Manual mode: Enter details from GST Portal. API integration coming soon.
+              </p>
+            </div>
+          </div>
+
+          {/* ✅ PHASE 3: E-WAY BILL SECTION */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-green-50 rounded-lg p-6 border border-green-200">
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="eWayBillEnabled"
+                  checked={formData.eWayBill?.enabled || false}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      eWayBill: { ...formData.eWayBill, enabled: e.target.checked },
+                    })
+                  }
+                  className="w-4 h-4 text-green-600"
+                />
+                <label htmlFor="eWayBillEnabled" className="text-sm font-semibold text-green-900">
+                  E-Way Bill (Manual Entry)
+                </label>
+                <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                  For goods &gt; ₹50,000
+                </span>
+              </div>
+
+              {formData.eWayBill?.enabled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      E-Way Bill Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.eWayBill?.ewbNumber || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, ewbNumber: e.target.value },
+                        })
+                      }
+                      placeholder="Enter EWB Number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      EWB Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.eWayBill?.ewbDate?.split('T')[0] || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, ewbDate: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Valid Upto
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.eWayBill?.validUpto?.split('T')[0] || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, validUpto: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Transport Mode
+                    </label>
+                    <select
+                      value={formData.eWayBill?.transportMode || 'ROAD'}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, transportMode: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="ROAD">Road</option>
+                      <option value="RAIL">Rail</option>
+                      <option value="AIR">Air</option>
+                      <option value="SHIP">Ship</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Vehicle Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.eWayBill?.vehicleNumber || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, vehicleNumber: e.target.value.toUpperCase() },
+                        })
+                      }
+                      placeholder="e.g., MH12AB1234"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Distance (KM)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.eWayBill?.distance || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, distance: parseFloat(e.target.value) || 0 },
+                        })
+                      }
+                      placeholder="Distance in KM"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Transporter Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.eWayBill?.transporterName || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, transporterName: e.target.value },
+                        })
+                      }
+                      placeholder="Transporter name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Status
+                    </label>
+                    <select
+                      value={formData.eWayBill?.status || 'NOT_GENERATED'}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          eWayBill: { ...formData.eWayBill, status: e.target.value },
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="NOT_GENERATED">Not Generated</option>
+                      <option value="GENERATED">Generated</option>
+                      <option value="CANCELLED">Cancelled</option>
+                      <option value="EXPIRED">Expired</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-green-600 mt-3">
+                💡 Manual mode: Enter details from E-Way Bill Portal. API integration coming soon.
+              </p>
+            </div>
+          </div>
+
+          {/* Invoice Summary - WITH AMOUNT IN WORDS */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow-sm border border-blue-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Invoice Summary
@@ -949,6 +1384,20 @@ export default function AddEditInvoice() {
                 </div>
               </div>
             </div>
+
+            {/* ✅ AMOUNT IN WORDS - ADDED HERE! */}
+            {totals.total > 0 && (
+              <div className="mt-6 pt-4 border-t-2 border-blue-300">
+                <div className="bg-blue-100 border-l-4 border-blue-600 rounded-r-lg p-4">
+                  <p className="text-xs font-semibold text-blue-900 uppercase mb-2">
+                    Amount in Words
+                  </p>
+                  <p className="text-base font-bold text-blue-900">
+                    {amountToWords(totals.total)}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Form Actions */}
@@ -971,6 +1420,8 @@ export default function AddEditInvoice() {
                 ? "Saving..."
                 : isEditing
                 ? "Update Invoice"
+                : isDuplicate
+                ? "Create Duplicate"
                 : "Create Invoice"}
             </button>
           </div>

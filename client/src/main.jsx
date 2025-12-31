@@ -1,30 +1,58 @@
 // ============================================
 // FILE: client/src/main.jsx
-// UPDATE - Add InvoiceView and OutstandingReports routes
+// CORRECTED - Added Phase 2 Routes
 // ============================================
 
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
+
+// Auth
 import Login from "./pages/Login";
+
+// Dashboard
 import Dashboard from "./pages/Dashboard";
+
+// Clients
 import Clients from "./pages/Clients";
 import AddEditClient from "./pages/AddEditClient";
+
+// Products
 import Products from "./pages/Products";
 import AddEditProduct from "./pages/AddEditProduct";
+
+// Invoices
 import Invoices from "./pages/Invoices";
 import AddEditInvoice from "./pages/AddEditInvoice";
 import InvoiceView from "./pages/InvoiceView";
+
+// Settings
+import OrganizationSettings from "./pages/OrganizationSettings";
+import TDSSettings from "./pages/TDSSettings";
+import WhatsAppSettings from "./pages/WhatsAppSettings";
+
+// Recurring Invoices
+import RecurringInvoices from "./pages/RecurringInvoices";
+import AddEditRecurringInvoice from "./pages/AddEditRecurringInvoice";
+
+// Reports - Phase 1
 import OutstandingReports from "./pages/OutstandingReports";
 import AgeingReport from "./pages/AgeingReport";
-import TDSSettings from "./pages/TDSSettings";
-import RecurringInvoices from "./pages/RecurringInvoices";
-import WhatsAppSettings from "./pages/WhatsAppSettings";
+
+// PHASE 2 - NEW IMPORTS
+import Payments from "./pages/Payments";
+import GSTReports from "./pages/GSTReports";
+import CreditDebitNotes from "./pages/CreditDebitNotes";
+
+// Analytics
 import Analytics from "./pages/Analytics";
 import ClientProfitability from "./pages/ClientProfitability";
-import AddEditRecurringInvoice from "./pages/AddEditRecurringInvoice";
-import OrganizationSettings from "./pages/OrganizationSettings";
+
+import Quotations from "./pages/Quotations";
+import AddEditQuotation from "./pages/AddEditQuotation";
+import ViewQuotation from "./pages/ViewQuotation";
+
 import { useAuthStore } from "./store/authStore";
 
 function PrivateRoute({ children }) {
@@ -36,10 +64,14 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
+        {/* ============================================ */}
+        {/* PUBLIC ROUTES */}
+        {/* ============================================ */}
         <Route path="/login" element={<Login />} />
 
-        {/* Dashboard */}
+        {/* ============================================ */}
+        {/* DASHBOARD */}
+        {/* ============================================ */}
         <Route
           path="/dashboard"
           element={
@@ -49,7 +81,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           }
         />
 
-        {/* Clients Routes */}
+        {/* ============================================ */}
+        {/* CLIENTS */}
+        {/* ============================================ */}
         <Route
           path="/clients"
           element={
@@ -75,7 +109,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           }
         />
 
-        {/* Products Routes */}
+        {/* ============================================ */}
+        {/* PRODUCTS */}
+        {/* ============================================ */}
         <Route
           path="/products"
           element={
@@ -101,7 +137,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           }
         />
 
-        {/* Invoices Routes */}
+        {/* ============================================ */}
+        {/* INVOICES */}
+        {/* ============================================ */}
         <Route
           path="/invoices"
           element={
@@ -126,8 +164,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
-
-        {/* NEW: Invoice View Route - For viewing and recording payments */}
         <Route
           path="/invoices/view/:id"
           element={
@@ -137,7 +173,139 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           }
         />
 
-        {/* Settings Routes */}
+        {/* QUOTATIONS */}
+        <Route
+          path="/quotations"
+          element={
+            <PrivateRoute>
+              <Quotations />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/quotations/add"
+          element={
+            <PrivateRoute>
+              <AddEditQuotation />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/quotations/edit/:id"
+          element={
+            <PrivateRoute>
+              <AddEditQuotation />
+            </PrivateRoute>
+          }
+        />
+
+        <Route path="/quotations/view/:id" element={<ViewQuotation />} />
+
+        {/* ============================================ */}
+        {/* PHASE 2: PAYMENTS */}
+        {/* ============================================ */}
+        <Route
+          path="/payments"
+          element={
+            <PrivateRoute>
+              <Payments />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ============================================ */}
+        {/* RECURRING INVOICES */}
+        {/* ============================================ */}
+        <Route
+          path="/recurring-invoices"
+          element={
+            <PrivateRoute>
+              <RecurringInvoices />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/recurring-invoices/add"
+          element={
+            <PrivateRoute>
+              <AddEditRecurringInvoice />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/recurring-invoices/edit/:id"
+          element={
+            <PrivateRoute>
+              <AddEditRecurringInvoice />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ============================================ */}
+        {/* PHASE 2: CREDIT & DEBIT NOTES */}
+        {/* ============================================ */}
+        <Route
+          path="/credit-debit-notes"
+          element={
+            <PrivateRoute>
+              <CreditDebitNotes />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ============================================ */}
+        {/* REPORTS */}
+        {/* ============================================ */}
+        <Route
+          path="/reports/outstanding"
+          element={
+            <PrivateRoute>
+              <OutstandingReports />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/reports/ageing"
+          element={
+            <PrivateRoute>
+              <AgeingReport />
+            </PrivateRoute>
+          }
+        />
+
+        {/* PHASE 2: GST REPORTS */}
+        <Route
+          path="/gst-reports"
+          element={
+            <PrivateRoute>
+              <GSTReports />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ============================================ */}
+        {/* ANALYTICS */}
+        {/* ============================================ */}
+        <Route
+          path="/analytics"
+          element={
+            <PrivateRoute>
+              <Analytics />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/analytics/client-profitability"
+          element={
+            <PrivateRoute>
+              <ClientProfitability />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ============================================ */}
+        {/* SETTINGS */}
+        {/* ============================================ */}
         <Route
           path="/settings/organization"
           element={
@@ -163,73 +331,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           }
         />
 
-        {/* NEW: Reports Routes */}
-        <Route
-          path="/reports/outstanding"
-          element={
-            <PrivateRoute>
-              <OutstandingReports />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/reports/ageing"
-          element={
-            <PrivateRoute>
-              <AgeingReport />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Recurring Invoices Routes */}
-        <Route
-          path="/recurring-invoices"
-          element={
-            <PrivateRoute>
-              <RecurringInvoices />
-            </PrivateRoute>
-          }
-        />
-
-        <Route
-          path="/recurring-invoices/add"
-          element={
-            <PrivateRoute>
-              <AddEditRecurringInvoice />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/recurring-invoices/edit/:id"
-          element={
-            <PrivateRoute>
-              <AddEditRecurringInvoice />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Analytics Routes */}
-        <Route
-          path="/analytics"
-          element={
-            <PrivateRoute>
-              <Analytics />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/analytics/client-profitability"
-          element={
-            <PrivateRoute>
-              <ClientProfitability />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Default Route */}
+        {/* ============================================ */}
+        {/* DEFAULT & CATCH-ALL */}
+        {/* ============================================ */}
         <Route path="/" element={<Navigate to="/dashboard" />} />
-
-        {/* Catch all - redirect to dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </BrowserRouter>

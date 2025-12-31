@@ -17,13 +17,16 @@ export default function AddEditClient() {
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
-  const [formData, setFormData] = useState({
+ const [formData, setFormData] = useState({
     companyName: '',
+    displayName: '', // NEW
     contactPerson: '',
     email: '',
     phone: '',
     gstin: '',
     pan: '',
+    cin: '', // NEW
+    gstTreatment: 'REGULAR', // NEW
     isTaxable: true,
     logo: '',
     billingAddress: '',
@@ -328,6 +331,80 @@ export default function AddEditClient() {
                   placeholder="AABCU9603R"
                   maxLength={10}
                 />
+              </div>
+
+              {/* NEW: CIN Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  CIN (Corporate ID)
+                </label>
+                <input
+                  type="text"
+                  name="cin"
+                  value={formData.cin || ''}
+                  onChange={(e) => setFormData({ ...formData, cin: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="L17110MH1973PLC019786"
+                  maxLength={21}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  For corporate clients (Pvt Ltd/Ltd)
+                </p>
+              </div>
+
+              {/* NEW: Display Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Display Name
+                </label>
+                <input
+                  type="text"
+                  name="displayName"
+                  value={formData.displayName || ''}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Leave blank to use company name"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Shown on invoices (defaults to company name)
+                </p>
+              </div>
+
+              {/* NEW: GST Treatment Dropdown */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  GST Treatment <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="gstTreatment"
+                  required
+                  value={formData.gstTreatment || 'REGULAR'}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <optgroup label="Registration-Based">
+                    <option value="REGULAR">Regular (Registered Business)</option>
+                    <option value="COMPOSITION">Composition Scheme</option>
+                    <option value="UNREGISTERED">Unregistered (Consumer/B2C)</option>
+                    <option value="CASUAL_TAXABLE">Casual Taxable Person</option>
+                    <option value="NRTP">Non-Resident Taxable Person</option>
+                  </optgroup>
+                  <optgroup label="Transaction-Value (B2C)">
+                    <option value="B2CS">B2C Small (≤₹1 lakh inter-state)</option>
+                    <option value="B2CL">B2C Large (&gt;₹1 lakh inter-state)</option>
+                  </optgroup>
+                  <optgroup label="Special Supply">
+                    <option value="SEZ">SEZ Supplies (Zero-rated)</option>
+                    <option value="EXPORT">Exports (Zero-rated)</option>
+                    <option value="IMPORT">Imports (IGST)</option>
+                  </optgroup>
+                  <optgroup label="Special Case">
+                    <option value="REVERSE_CHARGE">Reverse Charge Mechanism</option>
+                  </optgroup>
+                </select>
+                <p className="text-xs text-blue-600 mt-1">
+                  ℹ️ This affects how GST is calculated on invoices for this client
+                </p>
               </div>
 
               <div className="md:col-span-2">

@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/Invoices.jsx
-// UPDATED - Replace your current Invoices.jsx
+// PHASE 4 - With Duplicate Invoice Feature
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -17,6 +17,7 @@ import {
   Trash2,
   ChevronDown,
   FileText,
+  Copy, // ✅ PHASE 4: Added for duplicate
 } from 'lucide-react';
 
 export default function Invoices() {
@@ -59,6 +60,27 @@ export default function Invoices() {
     } catch (error) {
       console.error('Error deleting invoice:', error);
       alert('Failed to delete invoice');
+    }
+  };
+
+  // ✅ PHASE 4: Duplicate Invoice Handler
+  const handleDuplicate = async (invoiceId) => {
+    if (!confirm('Create a duplicate of this invoice?')) return;
+
+    try {
+      const response = await api.get(`/api/invoices/${invoiceId}`);
+      const invoice = response.data;
+
+      // Navigate to create page with pre-filled data
+      navigate('/invoices/add', {
+        state: {
+          duplicateFrom: invoice,
+          isDuplicate: true,
+        },
+      });
+    } catch (error) {
+      console.error('Error duplicating invoice:', error);
+      alert('Failed to duplicate invoice');
     }
   };
 
@@ -168,6 +190,7 @@ export default function Invoices() {
                 statusColors={statusColors}
                 onView={handleViewInvoice}
                 onDelete={handleDeleteInvoice}
+                onDuplicate={handleDuplicate} // ✅ PHASE 4: Pass duplicate handler
               />
             ))}
           </div>
@@ -177,7 +200,7 @@ export default function Invoices() {
   );
 }
 
-function InvoiceCard({ invoice, statusColors, onView, onDelete }) {
+function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
   const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -263,6 +286,14 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete }) {
           >
             <Eye className="w-4 h-4" />
           </button>
+          {/* ✅ PHASE 4: Duplicate Button */}
+          <button
+            onClick={() => onDuplicate(invoice._id)}
+            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+            title="Duplicate invoice"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
           <button
             onClick={handleDownloadPDF}
             disabled={downloading}
@@ -278,11 +309,11 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete }) {
           <button
             onClick={handleSendEmail}
             disabled={sending}
-            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
             title={sending ? 'Sending...' : 'Send email'}
           >
             {sending ? (
-              <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin"></div>
             ) : (
               <Mail className="w-4 h-4" />
             )}

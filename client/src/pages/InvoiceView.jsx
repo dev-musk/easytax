@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/InvoiceView.jsx
-// FIXED - Works without /api/organizations/me endpoint
+// FIXED - Uses correct payments endpoint
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -8,6 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import QRCode from 'qrcode';
 import {
   ArrowLeft,
   Download,
@@ -16,6 +17,7 @@ import {
   X,
   Check,
   AlertCircle,
+  QrCode, // ✅ PHASE 4: QR Code icon
 } from 'lucide-react';
 
 export default function InvoiceView() {
@@ -23,25 +25,37 @@ export default function InvoiceView() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const [invoice, setInvoice] = useState(null);
+  const [organization, setOrganization] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [upiQrCode, setUpiQrCode] = useState(null);
+  const [showUpiQr, setShowUpiQr] = useState(false);
 
   useEffect(() => {
     fetchInvoiceDetails();
+    fetchOrganization();
   }, [id]);
+
+  const fetchOrganization = async () => {
+    try {
+      const response = await api.get('/api/organization');
+      setOrganization(response.data);
+    } catch (error) {
+      console.error('Error fetching organization:', error);
+    }
+  };
 
   const fetchInvoiceDetails = async () => {
     try {
-      console.log('Fetching invoice:', id); // Debug log
+      console.log('Fetching invoice:', id);
       const response = await api.get(`/api/invoices/${id}`);
-      console.log('Invoice data:', response.data); // Debug log
+      console.log('Invoice data:', response.data);
       setInvoice(response.data);
     } catch (error) {
       console.error('Error fetching invoice:', error);
-      console.error('Error details:', error.response); // More debug info
+      console.error('Error details:', error.response);
       setError(error.response?.data?.error || 'Failed to load invoice');
-      // Don't navigate away immediately, show error
       setTimeout(() => {
         if (window.confirm('Failed to load invoice. Return to invoices list?')) {
           navigate('/invoices');
@@ -49,6 +63,29 @@ export default function InvoiceView() {
       }, 1000);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ✅ PHASE 4: Generate UPI QR Code
+  const generateUpiQr = async () => {
+    try {
+      const response = await api.get(`/api/invoices/${id}/upi-qr`);
+      
+      // Generate QR code as data URL
+      const qrDataUrl = await QRCode.toDataURL(response.data.upiString, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#6B21A8', // Purple
+          light: '#FFFFFF',
+        },
+      });
+      
+      setUpiQrCode(qrDataUrl);
+      setShowUpiQr(true);
+    } catch (error) {
+      console.error('Error generating UPI QR:', error);
+      alert(error.response?.data?.error || 'Failed to generate UPI QR code. Please add UPI ID in Settings → Bank Details.');
     }
   };
 
@@ -128,7 +165,7 @@ export default function InvoiceView() {
     <Layout>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header Actions */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between print:hidden">
           <button
             onClick={() => navigate('/invoices')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
@@ -145,6 +182,16 @@ export default function InvoiceView() {
               >
                 <CreditCard className="w-4 h-4" />
                 Record Payment
+              </button>
+            )}
+            {/* ✅ PHASE 4: UPI QR Button */}
+            {invoice.status !== 'PAID' && (
+              <button
+                onClick={generateUpiQr}
+                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <QrCode className="w-4 h-4" />
+                UPI QR Code
               </button>
             )}
             <button
@@ -166,17 +213,66 @@ export default function InvoiceView() {
 
         {/* Invoice Document */}
         <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-8 print:shadow-none print:border-0">
-          {/* Invoice Header */}
-          <div className="flex justify-between items-start mb-8 pb-6 border-b border-gray-200">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                {invoice.invoiceType === 'PROFORMA' ? 'PROFORMA INVOICE' : 'TAX INVOICE'}
+          {/* Invoice Header with Logo */}
+          <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-blue-500">
+            <div className="flex-1">
+              {/* Company Logo */}
+              {organization?.logo && organization?.displaySettings?.showCompanyLogo !== false && (
+                <div className="mb-4">
+                  <img
+                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/${organization.logo}`}
+                    alt="Company Logo"
+                    className="h-16 w-auto object-contain"
+                  />
+                </div>
+              )}
+              
+              {/* Company Details */}
+              <h1 className="text-2xl font-bold text-blue-600 mb-2">
+                {organization?.name || 'Company Name'}
               </h1>
-              <p className="text-sm text-gray-600">
-                Invoice Number: <span className="font-semibold">{invoice.invoiceNumber}</span>
-              </p>
+              {organization?.address && (
+                <p className="text-sm text-gray-600">{organization.address}</p>
+              )}
+              {organization?.city && organization?.state && (
+                <p className="text-sm text-gray-600">
+                  {organization.city}, {organization.state} - {organization.pincode}
+                </p>
+              )}
+              {organization?.gstin && (
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold">GSTIN:</span> {organization.gstin}
+                </p>
+              )}
+              {organization?.pan && (
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold">PAN:</span> {organization.pan}
+                </p>
+              )}
+              {organization?.cin && (
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold">CIN:</span> {organization.cin}
+                </p>
+              )}
+              {organization?.email && (
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold">Email:</span> {organization.email}
+                </p>
+              )}
+              {organization?.phone && (
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold">Phone:</span> {organization.phone}
+                </p>
+              )}
             </div>
-            <div>
+
+            <div className="text-right">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                {invoice.invoiceType === 'PROFORMA' ? 'PROFORMA INVOICE' : 'TAX INVOICE'}
+              </h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Invoice Number: <span className="font-semibold text-gray-900">{invoice.invoiceNumber}</span>
+              </p>
               <span
                 className={`px-4 py-2 text-sm font-medium rounded-full ${
                   statusColors[invoice.status]
@@ -188,11 +284,11 @@ export default function InvoiceView() {
           </div>
 
           {/* Client Details */}
-          <div className="grid grid-cols-1 gap-8 mb-8">
-            <div>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Bill To</h3>
+          <div className="grid grid-cols-2 gap-8 mb-8">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Bill To</h3>
               <div className="space-y-1">
-                <p className="font-bold text-gray-900">{invoice.client?.companyName}</p>
+                <p className="font-bold text-gray-900 text-base">{invoice.client?.companyName}</p>
                 {invoice.client?.billingAddress && (
                   <p className="text-sm text-gray-600">{invoice.client.billingAddress}</p>
                 )}
@@ -202,31 +298,50 @@ export default function InvoiceView() {
                   </p>
                 )}
                 {invoice.client?.gstin && (
-                  <p className="text-sm text-gray-600">GSTIN: {invoice.client.gstin}</p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold">GSTIN:</span> {invoice.client.gstin}
+                  </p>
                 )}
                 {invoice.client?.email && (
-                  <p className="text-sm text-gray-600">Email: {invoice.client.email}</p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold">Email:</span> {invoice.client.email}
+                  </p>
                 )}
               </div>
             </div>
+
+            {invoice.client?.shippingAddress && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Ship To</h3>
+                <div className="space-y-1">
+                  <p className="font-bold text-gray-900 text-base">{invoice.client?.companyName}</p>
+                  <p className="text-sm text-gray-600">{invoice.client.shippingAddress}</p>
+                  {invoice.client?.shippingCity && invoice.client?.shippingState && (
+                    <p className="text-sm text-gray-600">
+                      {invoice.client.shippingCity}, {invoice.client.shippingState}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-3 gap-4 mb-8 pb-6 border-b border-gray-200">
+          <div className="grid grid-cols-3 gap-4 mb-8 pb-6 border-b border-gray-200 bg-gray-50 p-4 rounded-lg">
             <div>
-              <p className="text-xs text-gray-500 mb-1">Invoice Date</p>
+              <p className="text-xs text-gray-500 uppercase mb-1">Invoice Date</p>
               <p className="font-semibold text-gray-900">
                 {new Date(invoice.invoiceDate).toLocaleDateString('en-IN')}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Due Date</p>
+              <p className="text-xs text-gray-500 uppercase mb-1">Due Date</p>
               <p className="font-semibold text-gray-900">
                 {new Date(invoice.dueDate).toLocaleDateString('en-IN')}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Payment Terms</p>
+              <p className="text-xs text-gray-500 uppercase mb-1">Payment Terms</p>
               <p className="font-semibold text-gray-900">
                 {Math.ceil(
                   (new Date(invoice.dueDate) - new Date(invoice.invoiceDate)) /
@@ -241,7 +356,7 @@ export default function InvoiceView() {
           <div className="mb-8 overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b-2 border-gray-300">
+                <tr className="border-b-2 border-gray-300 bg-gray-100">
                   <th className="text-left py-3 px-2 text-xs font-semibold text-gray-700 uppercase">
                     #
                   </th>
@@ -294,8 +409,8 @@ export default function InvoiceView() {
           </div>
 
           {/* Totals */}
-          <div className="flex justify-end">
-            <div className="w-80 space-y-2">
+          <div className="flex justify-end mb-8">
+            <div className="w-96 space-y-2">
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-sm text-gray-600">Subtotal</span>
                 <span className="text-sm font-medium text-gray-900">
@@ -353,9 +468,9 @@ export default function InvoiceView() {
                 </div>
               )}
 
-              <div className="flex justify-between py-3 border-t-2 border-gray-300">
-                <span className="text-base font-bold text-gray-900">Total Amount</span>
-                <span className="text-base font-bold text-gray-900">
+              <div className="flex justify-between py-3 border-t-2 border-gray-300 bg-blue-600 text-white px-4 rounded-lg">
+                <span className="text-base font-bold">Total Amount</span>
+                <span className="text-base font-bold">
                   ₹{invoice.totalAmount?.toLocaleString('en-IN')}
                 </span>
               </div>
@@ -368,8 +483,8 @@ export default function InvoiceView() {
                       ₹{invoice.paidAmount?.toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="flex justify-between py-2">
-                    <span className="text-sm font-bold text-gray-900">Balance Due</span>
+                  <div className="flex justify-between py-2 bg-red-50 px-4 rounded-lg">
+                    <span className="text-sm font-bold text-red-900">Balance Due</span>
                     <span className="text-sm font-bold text-red-600">
                       ₹{invoice.balanceAmount?.toLocaleString('en-IN')}
                     </span>
@@ -379,15 +494,172 @@ export default function InvoiceView() {
             </div>
           </div>
 
+          {/* Amount in Words */}
+          {organization?.displaySettings?.amountInWords !== false && invoice.amountInWords && (
+            <div className="mb-8 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+              <p className="text-xs text-gray-500 uppercase mb-1">Amount in Words</p>
+              <p className="font-semibold text-gray-900">{invoice.amountInWords}</p>
+            </div>
+          )}
+
           {/* Notes */}
           {invoice.notes && (
-            <div className="mt-8 pt-6 border-t border-gray-200">
+            <div className="mb-8 pt-6 border-t border-gray-200 bg-yellow-50 p-4 rounded-lg">
               <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Notes</h3>
               <p className="text-sm text-gray-600 whitespace-pre-wrap">{invoice.notes}</p>
             </div>
           )}
+
+          {/* Terms & Conditions */}
+          <div className="mb-8 bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Terms & Conditions</h3>
+            <div className="text-xs text-gray-600 space-y-1">
+              <p>1. Payment is due within the specified due date.</p>
+              <p>2. Please include invoice number with payment.</p>
+              <p>3. Late payments may incur additional charges.</p>
+              <p>4. Goods once sold cannot be returned or exchanged.</p>
+            </div>
+          </div>
+
+          {/* Bank Details */}
+          {organization?.bankDetails && organization?.displaySettings?.showBankDetails !== false && (
+            <div className="mb-8 bg-green-50 border border-green-200 p-4 rounded-lg">
+              <h3 className="text-xs font-semibold text-gray-700 uppercase mb-3">Bank Details for Payment</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {organization.bankDetails.bankName && (
+                  <div>
+                    <span className="text-gray-600">Bank Name:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{organization.bankDetails.bankName}</span>
+                  </div>
+                )}
+                {organization.bankDetails.accountHolderName && (
+                  <div>
+                    <span className="text-gray-600">Account Holder:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{organization.bankDetails.accountHolderName}</span>
+                  </div>
+                )}
+                {organization.bankDetails.accountNumber && (
+                  <div>
+                    <span className="text-gray-600">Account Number:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{organization.bankDetails.accountNumber}</span>
+                  </div>
+                )}
+                {organization.bankDetails.ifscCode && (
+                  <div>
+                    <span className="text-gray-600">IFSC Code:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{organization.bankDetails.ifscCode}</span>
+                  </div>
+                )}
+                {organization.bankDetails.branchName && (
+                  <div>
+                    <span className="text-gray-600">Branch:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{organization.bankDetails.branchName}</span>
+                  </div>
+                )}
+                {organization.bankDetails.upiId && (
+                  <div>
+                    <span className="text-gray-600">UPI ID:</span>
+                    <span className="ml-2 font-semibold text-gray-900">{organization.bankDetails.upiId}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Authorized Signature */}
+          {organization?.displaySettings?.showAuthorizedSignature !== false && (
+            <div className="text-right">
+              {organization?.authorizedSignatory?.signatureImage && (
+                <div className="inline-block mb-2">
+                  <img
+                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/${organization.authorizedSignatory.signatureImage}`}
+                    alt="Authorized Signature"
+                    className="h-16 w-auto object-contain"
+                  />
+                </div>
+              )}
+              <div className="inline-block border-t-2 border-gray-900 pt-2 px-8">
+                <p className="text-xs text-gray-600">Authorized Signature</p>
+                {organization?.authorizedSignatory?.name && (
+                  <p className="text-sm font-semibold text-gray-900">{organization.authorizedSignatory.name}</p>
+                )}
+                {organization?.authorizedSignatory?.designation && (
+                  <p className="text-xs text-gray-600">{organization.authorizedSignatory.designation}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="mt-8 pt-6 border-t border-gray-200 text-center">
+            <p className="text-xs text-gray-500">
+              This is a computer generated invoice and does not require a physical signature.
+            </p>
+            {organization?.email && organization?.phone && (
+              <p className="text-xs text-gray-500 mt-1">
+                For any queries, please contact: {organization.email} | {organization.phone}
+              </p>
+            )}
+          </div>
         </div>
       </div>
+
+      
+
+      {/* ✅ PHASE 4: UPI QR Code Modal */}
+      {showUpiQr && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">UPI Payment QR Code</h3>
+              <button
+                onClick={() => setShowUpiQr(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            {upiQrCode && (
+              <div className="p-6 text-center">
+                <img
+                  src={upiQrCode}
+                  alt="UPI QR Code"
+                  className="mx-auto mb-4 border-4 border-purple-200 rounded-lg"
+                />
+                <p className="text-sm text-gray-600 mb-2">
+                  Scan with any UPI app to pay
+                </p>
+                <p className="text-2xl font-bold text-purple-600 mb-4">
+                  ₹{invoice.balanceAmount?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </p>
+                
+                <div className="flex gap-2">
+                  <a
+                    href={upiQrCode}
+                    download={`UPI_QR_${invoice.invoiceNumber}.png`}
+                    className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-center text-sm font-medium transition-colors"
+                  >
+                    <Download className="w-4 h-4 inline mr-2" />
+                    Download QR
+                  </a>
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = upiQrCode;
+                      link.download = `UPI_QR_${invoice.invoiceNumber}.png`;
+                      link.click();
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium transition-colors"
+                  >
+                    Save Image
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Payment Modal */}
       {showPaymentModal && (
@@ -431,7 +703,17 @@ function PaymentModal({ invoice, onClose, onSuccess }) {
 
     setLoading(true);
     try {
-      await api.post(`/api/invoices/${invoice._id}/payments`, formData);
+      // ✅ FIXED: Use correct payments endpoint that creates Payment records
+      const response = await api.post('/api/payments', {
+        invoiceId: invoice._id,
+        amount: formData.amount,
+        paymentDate: formData.paymentDate,
+        paymentMode: formData.paymentMode,
+        referenceNumber: formData.referenceNumber,
+        notes: formData.notes,
+      });
+      
+      console.log('✅ Payment created:', response.data);
       alert('Payment recorded successfully!');
       onSuccess();
     } catch (err) {

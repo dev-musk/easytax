@@ -1,5 +1,6 @@
 // ============================================
 // FILE: server/server.js
+// CORRECTED - Added Phase 2 Routes
 // ============================================
 
 import express from 'express';
@@ -16,6 +17,13 @@ import recurringInvoiceRoutes from './routes/recurringInvoices.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import analyticsRoutes from './routes/analytics.js';
 import organizationRoutes from './routes/organization.js';
+import quotationRoutes from './routes/quotations.js';
+
+// PHASE 2 ROUTES - NEW IMPORTS
+import paymentRoutes from './routes/payments.js';
+import gstReportRoutes from './routes/gstReports.js';
+import creditDebitNoteRoutes from './routes/creditDebitNotes.js';
+
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -46,18 +54,31 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/invoices', invoiceRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/tdsconfig', tdsConfigRoutes);
-app.use('/api/recurring-invoices', recurringInvoiceRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api/analytics', analyticsRoutes);
+// ============================================
+// ROUTES - Phase 1 + Phase 2
+// ============================================
+
+// Phase 1 Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/organization', organizationRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
+
+// Phase 2 Routes - TDS & Recurring
+app.use('/api/tdsconfig', tdsConfigRoutes);
+app.use('/api/recurring-invoices', recurringInvoiceRoutes);
+
+// Phase 2 Routes - Payments & Reports (NEW)
+app.use('/api/payments', paymentRoutes);
+app.use('/api/gst-reports', gstReportRoutes);
+app.use('/api/credit-debit-notes', creditDebitNoteRoutes);
+
+// Phase 2 Routes - Analytics
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/quotations', quotationRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -76,4 +97,6 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📊 Phase 1 Routes: Auth, Organization, Clients, Products, Invoices, Dashboard, WhatsApp`);
+  console.log(`💰 Phase 2 Routes: TDS, Payments, GST Reports, Credit/Debit Notes, Recurring, Analytics`);
 });

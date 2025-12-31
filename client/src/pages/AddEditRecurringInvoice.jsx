@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/AddEditRecurringInvoice.jsx
-// NEW FILE - Create/Edit Recurring Invoice Templates
+// CORRECTED - Create/Edit Recurring Invoice Templates
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -82,18 +82,18 @@ export default function AddEditRecurringInvoice() {
       const template = response.data;
       setFormData({
         templateName: template.templateName,
-        clientId: template.client._id,
+        clientId: template.client?._id || template.client,
         invoiceType: template.invoiceType,
         frequency: template.frequency,
         startDate: template.startDate.split("T")[0],
         nextInvoiceDate: template.nextInvoiceDate.split("T")[0],
-        items: template.items,
-        discountType: template.discountType,
-        discountValue: template.discountValue,
+        items: template.items || [],
+        discountType: template.discountType || "PERCENTAGE",
+        discountValue: template.discountValue || 0,
         tdsSection: template.tdsSection || "",
         tdsRate: template.tdsRate || 0,
         notes: template.notes || "",
-        isActive: template.isActive,
+        isActive: template.isActive !== undefined ? template.isActive : true,
       });
     } catch (error) {
       console.error("Error fetching template:", error);
@@ -225,6 +225,7 @@ export default function AddEditRecurringInvoice() {
   };
 
   const calculateTotals = () => {
+    // Calculate item-wise totals
     const itemsTotal = formData.items.reduce(
       (sum, item) => sum + item.quantity * item.rate,
       0
@@ -235,6 +236,7 @@ export default function AddEditRecurringInvoice() {
     );
     const subtotal = formData.items.reduce((sum, item) => sum + item.amount, 0);
 
+    // Calculate invoice-level discount
     let invoiceDiscountAmount = 0;
     if (formData.discountType === "PERCENTAGE") {
       invoiceDiscountAmount = (subtotal * formData.discountValue) / 100;
@@ -243,14 +245,20 @@ export default function AddEditRecurringInvoice() {
     }
 
     const taxableAmount = subtotal - invoiceDiscountAmount;
+
+    // Calculate GST on taxable amount (after all discounts)
     const totalTax = formData.items.reduce((sum, item) => {
       const itemTaxableAmount =
-        item.amount - (item.amount * formData.discountValue) / 100;
+        item.amount - (item.amount * (formData.discountValue || 0)) / 100;
       return sum + (itemTaxableAmount * item.gstRate) / 100;
     }, 0);
 
     const totalWithTax = taxableAmount + totalTax;
-    const tdsAmount = (totalWithTax * formData.tdsRate) / 100;
+
+    // TDS calculated on total before tax
+    const tdsAmount = (taxableAmount * (formData.tdsRate || 0)) / 100;
+
+    // Final total after TDS deduction
     const total = totalWithTax - tdsAmount;
 
     return {
@@ -280,7 +288,7 @@ export default function AddEditRecurringInvoice() {
         nextInvoiceDate: formData.nextInvoiceDate,
         items: formData.items,
         discountType: formData.discountType,
-        discountValue: formData.discountValue,
+        discountValue: formData.discountValue || 0,
         tdsSection: formData.tdsSection || null,
         tdsRate: formData.tdsRate || 0,
         notes: formData.notes,
@@ -659,7 +667,7 @@ export default function AddEditRecurringInvoice() {
             </div>
           </div>
 
-          {/* Invoice Discount & TDS - NEW SECTION */}
+          {/* Invoice Discount & TDS */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Invoice-Level Deductions
@@ -769,6 +777,17 @@ export default function AddEditRecurringInvoice() {
                   })}
                 </span>
               </div>
+              {totals.invoiceDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Invoice Discount:</span>
+                  <span className="font-medium text-red-600">
+                    -₹
+                    {totals.invoiceDiscountAmount.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">GST:</span>
                 <span className="font-medium text-gray-900">
@@ -778,6 +797,17 @@ export default function AddEditRecurringInvoice() {
                   })}
                 </span>
               </div>
+              {totals.tdsAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">TDS:</span>
+                  <span className="font-medium text-orange-600">
+                    -₹
+                    {totals.tdsAmount.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              )}
               <div className="pt-2 border-t-2 border-blue-300 flex justify-between">
                 <span className="font-semibold text-gray-900">
                   Total per Invoice:

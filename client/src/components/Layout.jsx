@@ -1,11 +1,12 @@
 // ============================================
 // FILE: client/src/components/Layout.jsx
-// FIXED - Uses Zustand authStore instead of AuthContext
+// FIXED: GlobalSearch positioned BEFORE user profile
 // ============================================
 
-import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
+import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
+import GlobalSearch from "./GlobalSearch";
 import {
   LayoutDashboard,
   Users,
@@ -24,7 +25,10 @@ import {
   MessageSquare,
   PieChart,
   Building2,
-} from 'lucide-react';
+  CreditCard,
+  FileEdit,
+  Receipt,
+} from "lucide-react";
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -37,32 +41,52 @@ export default function Layout({ children }) {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Clients', href: '/clients', icon: Users },
-    { name: 'Products', href: '/products', icon: Package },
-    { name: 'Invoices', href: '/invoices', icon: FileText },
-    { name: 'Recurring Invoices', href: '/recurring-invoices', icon: RefreshCw },
-    { name: 'Analytics', href: '/analytics', icon: PieChart },
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Clients", href: "/clients", icon: Users },
+    { name: "Products", href: "/products", icon: Package },
+    { name: "Invoices", href: "/invoices", icon: FileText },
+    { name: "Payments", href: "/payments", icon: CreditCard },
+    { name: "Credit/Debit Notes", href: "/credit-debit-notes", icon: FileEdit },
+    {
+      name: "Recurring Invoices",
+      href: "/recurring-invoices",
+      icon: RefreshCw,
+    },
+    { name: "Analytics", href: "/analytics", icon: PieChart },
+    { name: "Quotations", href: "/quotations", icon: FileText },
   ];
 
   const reports = [
-    { name: 'Outstanding Reports', href: '/reports/outstanding', icon: TrendingDown },
-    { name: 'Ageing Report', href: '/reports/ageing', icon: Clock },
+    { name: "GST Reports", href: "/gst-reports", icon: Receipt },
+    {
+      name: "Outstanding Reports",
+      href: "/reports/outstanding",
+      icon: TrendingDown,
+    },
+    { name: "Ageing Report", href: "/reports/ageing", icon: Clock },
   ];
 
   const settingsMenu = [
-  { name: 'Company Settings', href: '/settings/organization', icon: Building2 }, // ADD THIS
-  { name: 'TDS Settings', href: '/settings/tds', icon: Percent },
-  { name: 'WhatsApp Settings', href: '/settings/whatsapp', icon: MessageSquare },
-];
+    {
+      name: "Company Settings",
+      href: "/settings/organization",
+      icon: Building2,
+    },
+    { name: "TDS Settings", href: "/settings/tds", icon: Percent },
+    {
+      name: "WhatsApp Settings",
+      href: "/settings/whatsapp",
+      icon: MessageSquare,
+    },
+  ];
 
   const isActive = (path) => {
-    if (path === '/reports') {
-      return location.pathname.startsWith('/reports');
+    if (path === "/reports") {
+      return location.pathname.startsWith("/reports");
     }
     return location.pathname === path;
   };
@@ -73,8 +97,8 @@ export default function Layout({ children }) {
       onClick={() => mobile && setSidebarOpen(false)}
       className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
         isActive(item.href)
-          ? 'bg-blue-50 text-blue-600 font-medium'
-          : 'text-gray-700 hover:bg-gray-100'
+          ? "bg-blue-50 text-blue-600 font-medium"
+          : "text-gray-700 hover:bg-gray-100"
       }`}
     >
       <item.icon className="w-5 h-5" />
@@ -95,7 +119,7 @@ export default function Layout({ children }) {
       {/* Sidebar */}
       <aside
         className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex flex-col h-full">
@@ -105,7 +129,9 @@ export default function Layout({ children }) {
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                 <FileText className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-gray-900">EasyTax ERP</span>
+              <span className="text-xl font-bold text-gray-900">
+                EasyTax ERP
+              </span>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -126,9 +152,10 @@ export default function Layout({ children }) {
               <button
                 onClick={() => setReportsOpen(!reportsOpen)}
                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  location.pathname.startsWith('/reports')
-                    ? 'bg-blue-50 text-blue-600 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
+                  location.pathname.startsWith("/reports") ||
+                  location.pathname === "/gst-reports"
+                    ? "bg-blue-50 text-blue-600 font-medium"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -137,11 +164,11 @@ export default function Layout({ children }) {
                 </div>
                 <ChevronDown
                   className={`w-4 h-4 transition-transform ${
-                    reportsOpen ? 'rotate-180' : ''
+                    reportsOpen ? "rotate-180" : ""
                   }`}
                 />
               </button>
-              
+
               {reportsOpen && (
                 <div className="mt-2 ml-4 space-y-1">
                   {reports.map((report) => (
@@ -151,8 +178,8 @@ export default function Layout({ children }) {
                       onClick={() => setSidebarOpen(false)}
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors ${
                         isActive(report.href)
-                          ? 'bg-blue-50 text-blue-600 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
+                          ? "bg-blue-50 text-blue-600 font-medium"
+                          : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
                       <report.icon className="w-4 h-4" />
@@ -168,9 +195,9 @@ export default function Layout({ children }) {
               <button
                 onClick={() => setSettingsOpen(!settingsOpen)}
                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  location.pathname.startsWith('/settings')
-                    ? 'bg-blue-50 text-blue-600 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
+                  location.pathname.startsWith("/settings")
+                    ? "bg-blue-50 text-blue-600 font-medium"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -179,11 +206,11 @@ export default function Layout({ children }) {
                 </div>
                 <ChevronDown
                   className={`w-4 h-4 transition-transform ${
-                    settingsOpen ? 'rotate-180' : ''
+                    settingsOpen ? "rotate-180" : ""
                   }`}
                 />
               </button>
-              
+
               {settingsOpen && (
                 <div className="mt-2 ml-4 space-y-1">
                   {settingsMenu.map((setting) => (
@@ -193,8 +220,8 @@ export default function Layout({ children }) {
                       onClick={() => setSidebarOpen(false)}
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors ${
                         isActive(setting.href)
-                          ? 'bg-blue-50 text-blue-600 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
+                          ? "bg-blue-50 text-blue-600 font-medium"
+                          : "text-gray-600 hover:bg-gray-100"
                       }`}
                     >
                       <setting.icon className="w-4 h-4" />
@@ -215,7 +242,9 @@ export default function Layout({ children }) {
                 </span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.name}
+                </p>
                 <p className="text-xs text-gray-500 truncate">{user?.email}</p>
               </div>
             </div>
@@ -244,7 +273,10 @@ export default function Layout({ children }) {
 
             <div className="flex-1 lg:hidden"></div>
 
+            {/* ✅ FIXED: GlobalSearch BEFORE user profile */}
             <div className="hidden lg:flex items-center gap-4">
+              <GlobalSearch />
+              
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
                   <span className="text-white font-semibold text-sm">
@@ -252,8 +284,12 @@ export default function Layout({ children }) {
                   </span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                  <p className="text-xs text-gray-500">{user?.organizationName || 'Admin'}</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {user?.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {user?.organizationName || "Admin"}
+                  </p>
                 </div>
               </div>
             </div>

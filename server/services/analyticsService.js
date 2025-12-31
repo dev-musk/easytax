@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/services/analyticsService.js
-// NEW FILE - Advanced Analytics Service
+// CORRECTED - Advanced Analytics Service
 // ============================================
 
 import Invoice from '../models/Invoice.js';
@@ -106,7 +106,11 @@ class AnalyticsService {
             totalDiscount: { $sum: '$discountAmount' },
             totalGST: {
               $sum: {
-                $add: ['$cgstAmount', '$sgstAmount', '$igstAmount'],
+                $add: [
+                  { $ifNull: ['$cgst', 0] },
+                  { $ifNull: ['$sgst', 0] },
+                  { $ifNull: ['$igst', 0] }
+                ],
               },
             },
             avgInvoiceValue: { $avg: '$totalAmount' },
@@ -183,6 +187,8 @@ class AnalyticsService {
             _id: '$client',
             totalRevenue: { $sum: '$totalAmount' },
             totalInvoices: { $sum: 1 },
+            totalPaid: { $sum: '$paidAmount' },
+            totalOutstanding: { $sum: '$balanceAmount' },
           },
         },
         {
@@ -201,6 +207,8 @@ class AnalyticsService {
             client: '$clientInfo',
             totalRevenue: 1,
             totalInvoices: 1,
+            totalPaid: 1,
+            totalOutstanding: 1,
           },
         },
       ]);
@@ -238,7 +246,7 @@ class AnalyticsService {
             },
             totalQuantity: { $sum: '$items.quantity' },
             totalRevenue: { $sum: '$items.amount' },
-            totalDiscount: { $sum: '$items.discountAmount' },
+            totalDiscount: { $sum: { $ifNull: ['$items.discountAmount', 0] } },
             avgRate: { $avg: '$items.rate' },
             timesOrdered: { $sum: 1 },
           },
@@ -337,16 +345,19 @@ class AnalyticsService {
     return invoices.map((inv) => ({
       'Invoice Number': inv.invoiceNumber,
       'Client': inv.client?.companyName || 'N/A',
-      'Invoice Date': new Date(inv.invoiceDate).toLocaleDateString(),
-      'Due Date': new Date(inv.dueDate).toLocaleDateString(),
+      'Invoice Date': new Date(inv.invoiceDate).toLocaleDateString('en-IN'),
+      'Due Date': new Date(inv.dueDate).toLocaleDateString('en-IN'),
       'Status': inv.status,
-      'Subtotal': inv.subtotalAmount,
-      'Discount': inv.discountAmount,
-      'GST': (inv.cgstAmount + inv.sgstAmount + inv.igstAmount),
-      'TDS': inv.tdsAmount,
+      'Subtotal': inv.subtotal || 0,
+      'Discount': inv.discountAmount || 0,
+      'CGST': inv.cgst || 0,
+      'SGST': inv.sgst || 0,
+      'IGST': inv.igst || 0,
+      'Total GST': (inv.cgst || 0) + (inv.sgst || 0) + (inv.igst || 0),
+      'TDS': inv.tdsAmount || 0,
       'Total': inv.totalAmount,
-      'Paid': inv.paidAmount,
-      'Balance': inv.balanceAmount,
+      'Paid': inv.paidAmount || 0,
+      'Balance': inv.balanceAmount || inv.totalAmount,
     }));
   }
 
@@ -362,11 +373,14 @@ class AnalyticsService {
       'Contact Person': client.contactPerson,
       'Email': client.email,
       'Phone': client.phoneNumber,
-      'GSTIN': client.gstin,
+      'GSTIN': client.gstin || 'N/A',
+      'PAN': client.pan || 'N/A',
+      'CIN': client.cin || 'N/A',
       'Address': client.address,
       'City': client.city,
       'State': client.state,
       'Pincode': client.pincode,
+      'GST Treatment': client.gstTreatment || 'N/A',
     }));
   }
 
@@ -380,14 +394,14 @@ class AnalyticsService {
     return profitability.map((item) => ({
       'Client': item.client?.companyName || 'N/A',
       'Total Invoices': item.totalInvoices,
-      'Total Revenue': item.totalRevenue,
-      'Total Paid': item.totalPaid,
-      'Outstanding': item.totalOutstanding,
-      'Avg Invoice Value': item.avgInvoiceValue,
-      'Total Discount': item.totalDiscount,
-      'Total TDS': item.totalTDS,
+      'Total Revenue': item.totalRevenue.toFixed(2),
+      'Total Paid': item.totalPaid.toFixed(2),
+      'Outstanding': item.totalOutstanding.toFixed(2),
+      'Avg Invoice Value': item.avgInvoiceValue.toFixed(2),
+      'Total Discount': item.totalDiscount.toFixed(2),
+      'Total TDS': item.totalTDS.toFixed(2),
       'Collection Rate (%)': item.collectionRate.toFixed(2),
-      'Profit Margin': item.profitMargin,
+      'Profit Margin': item.profitMargin.toFixed(2),
     }));
   }
 
@@ -397,10 +411,10 @@ class AnalyticsService {
     return products.map((item) => ({
       'Product/Service': item._id.description,
       'Type': item._id.itemType,
-      'Total Quantity': item.totalQuantity,
-      'Total Revenue': item.totalRevenue,
-      'Total Discount': item.totalDiscount,
-      'Avg Rate': item.avgRate,
+      'Total Quantity': item.totalQuantity.toFixed(2),
+      'Total Revenue': item.totalRevenue.toFixed(2),
+      'Total Discount': item.totalDiscount.toFixed(2),
+      'Avg Rate': item.avgRate.toFixed(2),
       'Times Ordered': item.timesOrdered,
     }));
   }
