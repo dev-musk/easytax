@@ -28,6 +28,7 @@ import {
   CreditCard,
   FileEdit,
   Receipt,
+  Database,
 } from "lucide-react";
 
 export default function Layout({ children }) {
@@ -58,6 +59,11 @@ export default function Layout({ children }) {
     },
     { name: "Analytics", href: "/analytics", icon: PieChart },
     { name: "Quotations", href: "/quotations", icon: FileText },
+    {
+      name: "HSN Codes",
+      href: "/hsn-management",
+      icon: Database, // Import Database from lucide-react
+    },
   ];
 
   const reports = [
@@ -276,7 +282,7 @@ export default function Layout({ children }) {
             {/* ✅ FIXED: GlobalSearch BEFORE user profile */}
             <div className="hidden lg:flex items-center gap-4">
               <GlobalSearch />
-              
+
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
                   <span className="text-white font-semibold text-sm">

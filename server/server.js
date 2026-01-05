@@ -18,6 +18,7 @@ import whatsappRoutes from './routes/whatsapp.js';
 import analyticsRoutes from './routes/analytics.js';
 import organizationRoutes from './routes/organization.js';
 import quotationRoutes from './routes/quotations.js';
+import hsnRoutes from './routes/hsn.js';
 
 // PHASE 2 ROUTES - NEW IMPORTS
 import paymentRoutes from './routes/payments.js';
@@ -79,6 +80,7 @@ app.use('/api/credit-debit-notes', creditDebitNoteRoutes);
 // Phase 2 Routes - Analytics
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/quotations', quotationRoutes);
+app.use('/api/hsn', hsnRoutes);
 
 // 404 handler
 app.use((req, res) => {

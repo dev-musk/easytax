@@ -1,7 +1,6 @@
 // ============================================
 // FILE: server/models/Invoice.js
-// PHASE 3 COMPLETE - With E-Invoice & E-Way Bill
-// REPLACE YOUR CURRENT FILE WITH THIS
+// ENHANCED WITH ALL SIMPLE FEATURES
 // ============================================
 
 import mongoose from "mongoose";
@@ -127,9 +126,25 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
 
+    // ✅ FEATURE #7: Additional Fields
+    poNumber: {
+      type: String,
+      trim: true,
+    },
+    poDate: {
+      type: Date,
+    },
+    contractNumber: {
+      type: String,
+      trim: true,
+    },
+    salesPersonName: {
+      type: String,
+      trim: true,
+    },
+
     // Reference numbers
     quotationNumber: String,
-    poNumber: String,
     dcNumber: String,
 
     // Items
@@ -168,27 +183,33 @@ const invoiceSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // TDS/TCS
+    // TDS
     tdsApplicable: {
       type: Boolean,
       default: false,
     },
+    tdsSection: String,
     tdsRate: Number,
     tdsAmount: {
       type: Number,
       default: 0,
     },
+
+    // ✅ FEATURE #8: TCS Provision
     tcsApplicable: {
       type: Boolean,
       default: false,
     },
-    tcsRate: Number,
+    tcsRate: {
+      type: Number,
+      default: 0,
+    },
     tcsAmount: {
       type: Number,
       default: 0,
     },
 
-    // Reverse Charge
+    // ✅ FEATURE #2: Reverse Charge
     reverseCharge: {
       type: Boolean,
       default: false,
@@ -236,7 +257,23 @@ const invoiceSchema = new mongoose.Schema(
     notes: String,
     termsConditions: String,
 
-    // GST Calculation Metadata
+    // ✅ FEATURE #32: Quick Notes
+    quickNotes: [{
+      note: {
+        type: String,
+        required: true,
+      },
+      addedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      addedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    }],
+
+    // GST Calculation Metadata (for FEATURE #11)
     gstCalculationMeta: {
       clientStateCode: String,
       orgStateCode: String,
@@ -255,12 +292,12 @@ const invoiceSchema = new mongoose.Schema(
         type: Date,
         default: Date.now,
       },
-      gstSplit: String, // 'CGST+SGST' or 'IGST'
+      gstSplit: String,
       clientState: String,
       orgState: String,
     },
 
-    // Document Attachments
+    // ✅ FEATURE #36: Document Attachments
     attachments: [
       {
         filename: String,
@@ -276,14 +313,14 @@ const invoiceSchema = new mongoose.Schema(
       },
     ],
 
-    // ✅ PHASE 3: E-Invoice (for businesses >₹5 crore) - Manual Mode
+    // E-Invoice
     eInvoice: {
       enabled: { type: Boolean, default: false },
-      irn: { type: String, trim: true },                    // Invoice Reference Number
-      ackNo: { type: String, trim: true },                  // Acknowledgement Number
-      ackDate: { type: Date },                              // Acknowledgement Date
-      qrCode: { type: String },                             // Base64 QR Code
-      signedInvoice: { type: String },                      // Digitally signed invoice
+      irn: { type: String, trim: true },
+      ackNo: { type: String, trim: true },
+      ackDate: { type: Date },
+      qrCode: { type: String },
+      signedInvoice: { type: String },
       status: {
         type: String,
         enum: ["NOT_GENERATED", "GENERATED", "CANCELLED"],
@@ -293,12 +330,12 @@ const invoiceSchema = new mongoose.Schema(
       cancelReason: String,
     },
 
-    // ✅ PHASE 3: E-Way Bill (for goods >₹50,000) - Manual Mode
+    // E-Way Bill
     eWayBill: {
       enabled: { type: Boolean, default: false },
-      ewbNumber: { type: String, trim: true },              // E-Way Bill Number
-      ewbDate: { type: Date },                              // E-Way Bill Date
-      validUpto: { type: Date },                            // Valid Until
+      ewbNumber: { type: String, trim: true },
+      ewbDate: { type: Date },
+      validUpto: { type: Date },
       transportMode: {
         type: String,
         enum: ["ROAD", "RAIL", "AIR", "SHIP"],
@@ -306,7 +343,7 @@ const invoiceSchema = new mongoose.Schema(
       vehicleNumber: String,
       transporterName: String,
       transporterId: String,
-      distance: Number,                                      // in KM
+      distance: Number,
       status: {
         type: String,
         enum: ["NOT_GENERATED", "GENERATED", "CANCELLED", "EXPIRED"],
@@ -314,7 +351,22 @@ const invoiceSchema = new mongoose.Schema(
       },
     },
 
-    // ✅ PHASE 3: Template Selection
+    // ✅ FEATURE #41: GST Filing Status
+    gstFilingStatus: {
+      gstr1Filed: {
+        type: Boolean,
+        default: false,
+      },
+      gstr1FiledDate: Date,
+      gstr3bFiled: {
+        type: Boolean,
+        default: false,
+      },
+      gstr3bFiledDate: Date,
+      filingPeriod: String, // e.g., "Jan 2026"
+    },
+
+    // Template
     template: {
       type: String,
       enum: ["MODERN", "CLASSIC", "MINIMAL", "PROFESSIONAL"],
@@ -356,6 +408,7 @@ const invoiceSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    lastReminderSent: Date,
 
     // PDF
     pdfUrl: String,

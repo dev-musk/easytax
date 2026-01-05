@@ -6,25 +6,33 @@
 
 export const generateInvoicePDF = (invoice, organization) => {
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
     });
   };
 
   const formatCurrency = (amount) => {
-    return `₹${amount?.toLocaleString('en-IN', {
+    return `₹${amount?.toLocaleString("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
   };
 
   const isInterstate = invoice.igst > 0;
-  const showLogo = organization?.logo && organization?.displaySettings?.showCompanyLogo !== false;
-  const showBankDetails = organization?.bankDetails && organization?.displaySettings?.showBankDetails !== false;
-  const showSignature = organization?.authorizedSignatory && organization?.displaySettings?.showAuthorizedSignature !== false;
-  const showAmountInWords = organization?.displaySettings?.amountInWords !== false && invoice.amountInWords;
+  const showLogo =
+    organization?.logo &&
+    organization?.displaySettings?.showCompanyLogo !== false;
+  const showBankDetails =
+    organization?.bankDetails &&
+    organization?.displaySettings?.showBankDetails !== false;
+  const showSignature =
+    organization?.authorizedSignatory &&
+    organization?.displaySettings?.showAuthorizedSignature !== false;
+  const showAmountInWords =
+    organization?.displaySettings?.amountInWords !== false &&
+    invoice.amountInWords;
 
   return `
 <!DOCTYPE html>
@@ -492,26 +500,60 @@ export const generateInvoicePDF = (invoice, organization) => {
     <!-- Header -->
     <div class="invoice-header">
       <div class="company-details">
-        ${showLogo ? `<img src="${process.env.BASE_URL || 'http://localhost:5000'}/${organization.logo}" alt="Company Logo" class="company-logo" />` : ''}
+        ${
+          showLogo
+            ? `<img src="${process.env.BASE_URL || "http://localhost:5000"}/${
+                organization.logo
+              }" alt="Company Logo" class="company-logo" />`
+            : ""
+        }
         
-        <h1>${organization.name || 'Your Company'}</h1>
-        ${organization.address ? `<p>${organization.address}</p>` : ''}
+        <h1>${organization.name || "Your Company"}</h1>
+        ${organization.address ? `<p>${organization.address}</p>` : ""}
         ${
           organization.city && organization.state
-            ? `<p>${organization.city}, ${organization.state} - ${organization.pincode || ''}</p>`
-            : ''
+            ? `<p>${organization.city}, ${organization.state} - ${
+                organization.pincode || ""
+              }</p>`
+            : ""
         }
-        ${organization.gstin ? `<p><strong>GSTIN:</strong> ${organization.gstin}</p>` : ''}
-        ${organization.pan ? `<p><strong>PAN:</strong> ${organization.pan}</p>` : ''}
-        ${organization.cin ? `<p><strong>CIN:</strong> ${organization.cin}</p>` : ''}
-        ${organization.email ? `<p><strong>Email:</strong> ${organization.email}</p>` : ''}
-        ${organization.phone ? `<p><strong>Phone:</strong> ${organization.phone}</p>` : ''}
+        ${
+          organization.gstin
+            ? `<p><strong>GSTIN:</strong> ${organization.gstin}</p>`
+            : ""
+        }
+        ${
+          organization.pan
+            ? `<p><strong>PAN:</strong> ${organization.pan}</p>`
+            : ""
+        }
+        ${
+          organization.cin
+            ? `<p><strong>CIN:</strong> ${organization.cin}</p>`
+            : ""
+        }
+        ${
+          organization.email
+            ? `<p><strong>Email:</strong> ${organization.email}</p>`
+            : ""
+        }
+        ${
+          organization.phone
+            ? `<p><strong>Phone:</strong> ${organization.phone}</p>`
+            : ""
+        }
       </div>
       <div class="invoice-title">
-        <h2>${invoice.invoiceType === 'PROFORMA' ? 'PROFORMA INVOICE' : 'TAX INVOICE'}</h2>
+        <h2>${
+          invoice.invoiceType === "PROFORMA"
+            ? "PROFORMA INVOICE"
+            : "TAX INVOICE"
+        }</h2>
         <div class="invoice-number">${invoice.invoiceNumber}</div>
-        <span class="status-badge status-${invoice.status.toLowerCase().replace('_', '-')}">
-          ${invoice.status.replace('_', ' ')}
+        <span class="status-badge status-${invoice.status
+          .toLowerCase()
+          .replace("_", "-")}">
+          ${invoice.status.replace("_", " ")}
         </span>
       </div>
     </div>
@@ -520,15 +562,29 @@ export const generateInvoicePDF = (invoice, organization) => {
     <div class="parties-section">
       <div class="party-box">
         <h3>Bill To</h3>
-        <div class="company-name">${invoice.client?.companyName || 'Client Name'}</div>
-        ${invoice.client?.billingAddress ? `<p>${invoice.client.billingAddress}</p>` : ''}
+        <div class="company-name">${
+          invoice.client?.companyName || "Client Name"
+        }</div>
+        ${
+          invoice.client?.billingAddress
+            ? `<p>${invoice.client.billingAddress}</p>`
+            : ""
+        }
         ${
           invoice.client?.billingCity && invoice.client?.billingState
             ? `<p>${invoice.client.billingCity}, ${invoice.client.billingState}</p>`
-            : ''
+            : ""
         }
-        ${invoice.client?.gstin ? `<p><strong>GSTIN:</strong> ${invoice.client.gstin}</p>` : ''}
-        ${invoice.client?.email ? `<p><strong>Email:</strong> ${invoice.client.email}</p>` : ''}
+        ${
+          invoice.client?.gstin
+            ? `<p><strong>GSTIN:</strong> ${invoice.client.gstin}</p>`
+            : ""
+        }
+        ${
+          invoice.client?.email
+            ? `<p><strong>Email:</strong> ${invoice.client.email}</p>`
+            : ""
+        }
       </div>
       
       ${
@@ -536,12 +592,12 @@ export const generateInvoicePDF = (invoice, organization) => {
           ? `
       <div class="party-box">
         <h3>Ship To</h3>
-        <div class="company-name">${invoice.client?.companyName || ''}</div>
-        <p>${invoice.client?.shippingAddress || ''}</p>
+        <div class="company-name">${invoice.client?.companyName || ""}</div>
+        <p>${invoice.client?.shippingAddress || ""}</p>
         ${
           invoice.client?.shippingCity && invoice.client?.shippingState
             ? `<p>${invoice.client.shippingCity}, ${invoice.client.shippingState}</p>`
-            : ''
+            : ""
         }
       </div>
       `
@@ -562,10 +618,69 @@ export const generateInvoicePDF = (invoice, organization) => {
       <div class="date-item">
         <h4>Payment Terms</h4>
         <p>${Math.ceil(
-          (new Date(invoice.dueDate) - new Date(invoice.invoiceDate)) / (1000 * 60 * 60 * 24)
+          (new Date(invoice.dueDate) - new Date(invoice.invoiceDate)) /
+            (1000 * 60 * 60 * 24)
         )} Days</p>
       </div>
     </div>
+
+    <!-- ✅ FIXED: Additional Information Section -->
+${
+  invoice.poNumber ||
+  invoice.poDate ||
+  invoice.contractNumber ||
+  invoice.salesPersonName
+    ? `
+<div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+  <h3 class="text-xs font-semibold text-gray-500 uppercase mb-3">Additional Information</h3>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+    ${
+      invoice.poNumber
+        ? `
+    <div>
+      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">PO Number</p>
+      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${invoice.poNumber}</p>
+    </div>
+    `
+        : ""
+    }
+    ${
+      invoice.poDate
+        ? `
+    <div>
+      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">PO Date</p>
+      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${formatDate(
+        invoice.poDate
+      )}</p>
+    </div>
+    `
+        : ""
+    }
+    ${
+      invoice.contractNumber
+        ? `
+    <div>
+      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">Contract Number</p>
+      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${invoice.contractNumber}</p>
+    </div>
+    `
+        : ""
+    }
+    ${
+      invoice.salesPersonName
+        ? `
+    <div>
+      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">Sales Person</p>
+      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${invoice.salesPersonName}</p>
+    </div>
+    `
+        : ""
+    }
+  </div>
+</div>
+`
+    : ""
+}
 
     <!-- Items Table -->
     <table class="items-table">
@@ -590,7 +705,7 @@ export const generateInvoicePDF = (invoice, organization) => {
             <td>
               <div class="item-description">${item.description}</div>
             </td>
-            <td class="text-center">${item.hsnSacCode || '-'}</td>
+            <td class="text-center">${item.hsnSacCode || "-"}</td>
             <td class="text-center">${item.quantity}</td>
             <td class="text-right">${formatCurrency(item.rate)}</td>
             <td class="text-center">${item.gstRate}%</td>
@@ -601,7 +716,7 @@ export const generateInvoicePDF = (invoice, organization) => {
           </tr>
         `
           )
-          .join('')}
+          .join("")}
       </tbody>
     </table>
 
@@ -618,12 +733,14 @@ export const generateInvoicePDF = (invoice, organization) => {
             ? `
         <div class="totals-row discount">
           <span class="label">Discount ${
-            invoice.discountType === 'PERCENTAGE' ? `(${invoice.discountValue}%)` : ''
+            invoice.discountType === "PERCENTAGE"
+              ? `(${invoice.discountValue}%)`
+              : ""
           }</span>
           <span class="value">- ${formatCurrency(invoice.discountAmount)}</span>
         </div>
         `
-            : ''
+            : ""
         }
 
         ${
@@ -634,7 +751,7 @@ export const generateInvoicePDF = (invoice, organization) => {
           <span class="value">${formatCurrency(invoice.cgst)}</span>
         </div>
         `
-            : ''
+            : ""
         }
 
         ${
@@ -645,7 +762,7 @@ export const generateInvoicePDF = (invoice, organization) => {
           <span class="value">${formatCurrency(invoice.sgst)}</span>
         </div>
         `
-            : ''
+            : ""
         }
 
         ${
@@ -656,7 +773,7 @@ export const generateInvoicePDF = (invoice, organization) => {
           <span class="value">${formatCurrency(invoice.igst)}</span>
         </div>
         `
-            : ''
+            : ""
         }
 
         ${
@@ -667,7 +784,20 @@ export const generateInvoicePDF = (invoice, organization) => {
           <span class="value">${formatCurrency(invoice.roundOff)}</span>
         </div>
         `
-            : ''
+            : ""
+        }
+
+        ${
+          invoice.tcsAmount > 0
+            ? `
+<div class="totals-row">
+  <span class="label">TCS (${invoice.tcsRate}%)</span>
+  <span class="value" style="color: #9333ea;">+${formatCurrency(
+    invoice.tcsAmount
+  )}</span>
+</div>
+`
+            : ""
         }
 
         <div class="totals-row total">
@@ -687,10 +817,26 @@ export const generateInvoicePDF = (invoice, organization) => {
           <span class="value">${formatCurrency(invoice.balanceAmount)}</span>
         </div>
         `
-            : ''
+            : ""
         }
       </div>
     </div>
+
+    <!-- FIXED: Reverse Charge Notice -->
+${
+  invoice.reverseCharge
+    ? `
+<div class="mb-6 p-4 bg-orange-50 border-l-4 border-orange-500 rounded">
+  <p class="text-sm font-bold text-orange-900 mb-1">
+    ⚠️ REVERSE CHARGE APPLICABLE
+  </p>
+  <p class="text-xs text-orange-700">
+    Tax is payable by the recipient under Section 9(3) of CGST Act, 2017
+  </p>
+</div>
+`
+    : ""
+}
 
     <!-- Amount in Words - CRITICAL GST REQUIREMENT -->
     ${
@@ -701,7 +847,7 @@ export const generateInvoicePDF = (invoice, organization) => {
       <p>${invoice.amountInWords}</p>
     </div>
     `
-        : ''
+        : ""
     }
 
     <!-- Notes -->
@@ -713,7 +859,7 @@ export const generateInvoicePDF = (invoice, organization) => {
       <p>${invoice.notes}</p>
     </div>
     `
-        : ''
+        : ""
     }
 
     <!-- Terms & Conditions -->
@@ -734,16 +880,40 @@ export const generateInvoicePDF = (invoice, organization) => {
     <div class="bank-details">
       <h4>Bank Details for Payment</h4>
       <div class="bank-details-grid">
-        ${organization.bankDetails.bankName ? `<div class="bank-detail-item"><span class="label">Bank Name:</span><span class="value">${organization.bankDetails.bankName}</span></div>` : ''}
-        ${organization.bankDetails.accountHolderName ? `<div class="bank-detail-item"><span class="label">Account Holder:</span><span class="value">${organization.bankDetails.accountHolderName}</span></div>` : ''}
-        ${organization.bankDetails.accountNumber ? `<div class="bank-detail-item"><span class="label">Account Number:</span><span class="value">${organization.bankDetails.accountNumber}</span></div>` : ''}
-        ${organization.bankDetails.ifscCode ? `<div class="bank-detail-item"><span class="label">IFSC Code:</span><span class="value">${organization.bankDetails.ifscCode}</span></div>` : ''}
-        ${organization.bankDetails.branchName ? `<div class="bank-detail-item"><span class="label">Branch:</span><span class="value">${organization.bankDetails.branchName}</span></div>` : ''}
-        ${organization.bankDetails.upiId ? `<div class="bank-detail-item"><span class="label">UPI ID:</span><span class="value">${organization.bankDetails.upiId}</span></div>` : ''}
+        ${
+          organization.bankDetails.bankName
+            ? `<div class="bank-detail-item"><span class="label">Bank Name:</span><span class="value">${organization.bankDetails.bankName}</span></div>`
+            : ""
+        }
+        ${
+          organization.bankDetails.accountHolderName
+            ? `<div class="bank-detail-item"><span class="label">Account Holder:</span><span class="value">${organization.bankDetails.accountHolderName}</span></div>`
+            : ""
+        }
+        ${
+          organization.bankDetails.accountNumber
+            ? `<div class="bank-detail-item"><span class="label">Account Number:</span><span class="value">${organization.bankDetails.accountNumber}</span></div>`
+            : ""
+        }
+        ${
+          organization.bankDetails.ifscCode
+            ? `<div class="bank-detail-item"><span class="label">IFSC Code:</span><span class="value">${organization.bankDetails.ifscCode}</span></div>`
+            : ""
+        }
+        ${
+          organization.bankDetails.branchName
+            ? `<div class="bank-detail-item"><span class="label">Branch:</span><span class="value">${organization.bankDetails.branchName}</span></div>`
+            : ""
+        }
+        ${
+          organization.bankDetails.upiId
+            ? `<div class="bank-detail-item"><span class="label">UPI ID:</span><span class="value">${organization.bankDetails.upiId}</span></div>`
+            : ""
+        }
       </div>
     </div>
     `
-        : ''
+        : ""
     }
 
     <!-- Signature -->
@@ -752,23 +922,37 @@ export const generateInvoicePDF = (invoice, organization) => {
         ? `
     <div class="signature-section">
       <div>
-        ${organization.authorizedSignatory.signatureImage ? `<img src="${process.env.BASE_URL || 'http://localhost:5000'}/${organization.authorizedSignatory.signatureImage}" alt="Authorized Signature" class="signature-image" />` : ''}
+        ${
+          organization.authorizedSignatory.signatureImage
+            ? `<img src="${process.env.BASE_URL || "http://localhost:5000"}/${
+                organization.authorizedSignatory.signatureImage
+              }" alt="Authorized Signature" class="signature-image" />`
+            : ""
+        }
         <div class="signature-line">
           <div class="signature-text">Authorized Signature</div>
-          ${organization.authorizedSignatory.name ? `<div class="signature-name">${organization.authorizedSignatory.name}</div>` : ''}
-          ${organization.authorizedSignatory.designation ? `<div class="signature-designation">${organization.authorizedSignatory.designation}</div>` : ''}
+          ${
+            organization.authorizedSignatory.name
+              ? `<div class="signature-name">${organization.authorizedSignatory.name}</div>`
+              : ""
+          }
+          ${
+            organization.authorizedSignatory.designation
+              ? `<div class="signature-designation">${organization.authorizedSignatory.designation}</div>`
+              : ""
+          }
         </div>
       </div>
     </div>
     `
-        : ''
+        : ""
     }
 
     <!-- Footer -->
     <div class="footer">
       <p>This is a computer generated invoice and does not require a physical signature.</p>
-      <p>For any queries, please contact: ${organization.email || ''} | ${
-    organization.phone || ''
+      <p>For any queries, please contact: ${organization.email || ""} | ${
+    organization.phone || ""
   }</p>
     </div>
   </div>

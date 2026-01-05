@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/Invoices.jsx
-// PHASE 4 - With Duplicate Invoice Feature
+// ✅ FIXED: Added Clear Search Button (Feature #38)
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -9,15 +9,16 @@ import Layout from '../components/Layout';
 import api from '../utils/api';
 import {
   Plus,
-  Search,
-  Filter,
+  Eye,
+  Copy,
   Download,
   Mail,
-  Eye,
   Trash2,
+  Search,
+  Filter,
   ChevronDown,
   FileText,
-  Copy, // ✅ PHASE 4: Added for duplicate
+  X, // ✅ ADDED: Import X icon for clear button
 } from 'lucide-react';
 
 export default function Invoices() {
@@ -29,11 +30,15 @@ export default function Invoices() {
 
   useEffect(() => {
     fetchInvoices();
-  }, []);
+  }, [searchTerm, filterStatus]);
 
   const fetchInvoices = async () => {
     try {
-      const response = await api.get('/api/invoices');
+      const params = {};
+      if (filterStatus !== 'ALL') params.status = filterStatus;
+      if (searchTerm) params.search = searchTerm;
+
+      const response = await api.get('/api/invoices', { params });
       setInvoices(response.data || []);
     } catch (error) {
       console.error('Error fetching invoices:', error);
@@ -46,8 +51,8 @@ export default function Invoices() {
     navigate('/invoices/add');
   };
 
-  const handleViewInvoice = (invoice) => {
-    navigate(`/invoices/view/${invoice._id}`);
+  const handleViewInvoice = (invoiceId) => {
+    navigate(`/invoices/view/${invoiceId}`);
   };
 
   const handleDeleteInvoice = async (invoiceId) => {
@@ -63,15 +68,13 @@ export default function Invoices() {
     }
   };
 
-  // ✅ PHASE 4: Duplicate Invoice Handler
-  const handleDuplicate = async (invoiceId) => {
+  const handleDuplicateInvoice = async (invoiceId) => {
     if (!confirm('Create a duplicate of this invoice?')) return;
 
     try {
       const response = await api.get(`/api/invoices/${invoiceId}`);
       const invoice = response.data;
 
-      // Navigate to create page with pre-filled data
       navigate('/invoices/add', {
         state: {
           duplicateFrom: invoice,
@@ -84,14 +87,13 @@ export default function Invoices() {
     }
   };
 
+  // ✅ ADDED: Clear search function
+  const handleClearSearch = () => {
+    setSearchTerm('');
+  };
+
   const filteredInvoices = invoices.filter((invoice) => {
-    const matchesSearch =
-      invoice.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.client?.companyName?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus = filterStatus === 'ALL' || invoice.status === filterStatus;
-
-    return matchesSearch && matchesStatus;
+    return filterStatus === 'ALL' || invoice.status === filterStatus;
   });
 
   const statusColors = {
@@ -122,15 +124,26 @@ export default function Invoices() {
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* ✅ FIXED: Search input with clear button */}
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by invoice number or client name..."
+                placeholder="Search by invoice #, client, PO #, HSN, items, amounts..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {/* ✅ ADDED: Clear search button - only shows when searchTerm has value */}
+              {searchTerm && (
+                <button
+                  onClick={handleClearSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Clear search"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
             </div>
 
             <div className="relative">
@@ -167,7 +180,7 @@ export default function Invoices() {
               </h3>
               <p className="text-gray-500 mb-6">
                 {searchTerm || filterStatus !== 'ALL'
-                  ? 'Try adjusting your filters'
+                  ? 'Try adjusting your filters or search query'
                   : 'Create your first invoice to get started'}
               </p>
               {!searchTerm && filterStatus === 'ALL' && (
@@ -190,7 +203,7 @@ export default function Invoices() {
                 statusColors={statusColors}
                 onView={handleViewInvoice}
                 onDelete={handleDeleteInvoice}
-                onDuplicate={handleDuplicate} // ✅ PHASE 4: Pass duplicate handler
+                onDuplicate={handleDuplicateInvoice}
               />
             ))}
           </div>
@@ -204,7 +217,8 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
   const [downloading, setDownloading] = useState(false);
   const [sending, setSending] = useState(false);
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = async (e) => {
+    e.stopPropagation();
     setDownloading(true);
     try {
       const response = await api.get(`/api/invoices/${invoice._id}/pdf`, {
@@ -232,7 +246,8 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
     }
   };
 
-  const handleSendEmail = async () => {
+  const handleSendEmail = async (e) => {
+    e.stopPropagation();
     const recipientEmail = prompt('Enter recipient email address:', invoice.client?.email || '');
 
     if (!recipientEmail) return;
@@ -259,12 +274,30 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
     }
   };
 
+  const handleView = (e) => {
+    e.stopPropagation();
+    onView(invoice._id);
+  };
+
+  const handleDuplicate = (e) => {
+    e.stopPropagation();
+    onDuplicate(invoice._id);
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onDelete(invoice._id);
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+    <div
+      onClick={() => onView(invoice._id)}
+      className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer hover:border-blue-300"
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-blue-600 hover:text-blue-700">
               {invoice.invoiceNumber || 'DRAFT'}
             </h3>
             <span
@@ -274,26 +307,53 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
             >
               {invoice.status?.replace('_', ' ')}
             </span>
+            
+            {invoice.gstFilingStatus?.gstr1Filed && (
+              <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                GSTR-1 ✓
+              </span>
+            )}
+            {invoice.gstFilingStatus?.gstr3bFiled && (
+              <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">
+                GSTR-3B ✓
+              </span>
+            )}
           </div>
-          <p className="text-sm text-gray-600">{invoice.client?.companyName || 'Unknown Client'}</p>
+          
+          <p className="text-sm text-gray-600 font-medium hover:text-blue-600">
+            {invoice.client?.companyName || 'Unknown Client'}
+          </p>
+          
+          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+            {invoice.poNumber && (
+              <span>PO: {invoice.poNumber}</span>
+            )}
+            {invoice.salesPersonName && (
+              <span>Sales: {invoice.salesPersonName}</span>
+            )}
+            {invoice.reverseCharge && (
+              <span className="text-orange-600 font-semibold">⚠️ Reverse Charge</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => onView(invoice)}
+            onClick={handleView}
             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
             title="View invoice"
           >
             <Eye className="w-4 h-4" />
           </button>
-          {/* ✅ PHASE 4: Duplicate Button */}
+          
           <button
-            onClick={() => onDuplicate(invoice._id)}
+            onClick={handleDuplicate}
             className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
             title="Duplicate invoice"
           >
             <Copy className="w-4 h-4" />
           </button>
+          
           <button
             onClick={handleDownloadPDF}
             disabled={downloading}
@@ -306,6 +366,7 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
               <Download className="w-4 h-4" />
             )}
           </button>
+          
           <button
             onClick={handleSendEmail}
             disabled={sending}
@@ -318,8 +379,9 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
               <Mail className="w-4 h-4" />
             )}
           </button>
+          
           <button
-            onClick={() => onDelete(invoice._id)}
+            onClick={handleDelete}
             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             title="Delete invoice"
           >
@@ -349,11 +411,20 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
         </div>
         <div>
           <p className="text-xs text-gray-500 mb-1">Balance</p>
-          <p className="text-sm font-bold text-red-600">
+          <p className={`text-sm font-bold ${invoice.balanceAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
             ₹{invoice.balanceAmount?.toLocaleString('en-IN') || 0}
           </p>
         </div>
       </div>
+
+      {invoice.quickNotes?.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Latest Note:</p>
+          <p className="text-sm text-gray-700 truncate">
+            {invoice.quickNotes[invoice.quickNotes.length - 1].note}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

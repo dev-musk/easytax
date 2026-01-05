@@ -1,30 +1,73 @@
 // ============================================
 // FILE: client/src/pages/AddEditInvoice.jsx
-// PHASE 4 - With Duplicate Invoice Handling
+// ENHANCED WITH FEATURES #1, #2, #5, #7, #8, #11, #19
 // ============================================
 
 import { useState, useEffect } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom"; // ✅ Added useLocation
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import HSNSearch from "../components/HSNSearch";
 import Layout from "../components/Layout";
 import api from "../utils/api";
-import { ArrowLeft, Save, Plus, Minus, Package, Percent } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Plus,
+  Minus,
+  Package,
+  Percent,
+  AlertTriangle,
+  CheckCircle,
+} from "lucide-react";
 
-// ✅ NUMBER TO WORDS CONVERTER - CLIENT SIDE
+// Number to words converter (client-side)
 const convertTwoDigit = (n) => {
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+  ];
+  const teens = [
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
 
   if (n < 10) return ones[n];
   if (n < 20) return teens[n - 10];
   const tenDigit = Math.floor(n / 10);
   const oneDigit = n % 10;
-  return tens[tenDigit] + (oneDigit > 0 ? ' ' + ones[oneDigit] : '');
+  return tens[tenDigit] + (oneDigit > 0 ? " " + ones[oneDigit] : "");
 };
 
 const numberToWords = (num) => {
-  if (num === 0) return 'Zero Rupees Only';
-  if (num < 0) return 'Minus ' + numberToWords(Math.abs(num));
+  if (num === 0) return "Zero Rupees Only";
+  if (num < 0) return "Minus " + numberToWords(Math.abs(num));
 
   num = Math.floor(num);
 
@@ -34,25 +77,25 @@ const numberToWords = (num) => {
   const hundred = Math.floor((num % 1000) / 100);
   const remainder = Math.floor(num % 100);
 
-  let words = '';
+  let words = "";
 
   if (crore > 0) {
     if (crore > 99) {
-      words += numberToWords(crore).replace(' Rupees Only', '') + ' Crore ';
+      words += numberToWords(crore).replace(" Rupees Only", "") + " Crore ";
     } else {
-      words += convertTwoDigit(crore) + ' Crore ';
+      words += convertTwoDigit(crore) + " Crore ";
     }
   }
 
-  if (lakh > 0) words += convertTwoDigit(lakh) + ' Lakh ';
-  if (thousand > 0) words += convertTwoDigit(thousand) + ' Thousand ';
-  if (hundred > 0) words += convertTwoDigit(hundred) + ' Hundred ';
+  if (lakh > 0) words += convertTwoDigit(lakh) + " Lakh ";
+  if (thousand > 0) words += convertTwoDigit(thousand) + " Thousand ";
+  if (hundred > 0) words += convertTwoDigit(hundred) + " Hundred ";
   if (remainder > 0) {
-    if (words.length > 0) words += 'and ';
-    words += convertTwoDigit(remainder) + ' ';
+    if (words.length > 0) words += "and ";
+    words += convertTwoDigit(remainder) + " ";
   }
 
-  return words.trim() + ' Rupees Only';
+  return words.trim() + " Rupees Only";
 };
 
 const amountToWords = (amount) => {
@@ -63,7 +106,11 @@ const amountToWords = (amount) => {
   let words = numberToWords(rupees);
 
   if (paise > 0) {
-    words = words.replace(' Only', '') + ' and ' + convertTwoDigit(paise) + ' Paise Only';
+    words =
+      words.replace(" Only", "") +
+      " and " +
+      convertTwoDigit(paise) +
+      " Paise Only";
   }
 
   return words;
@@ -72,10 +119,9 @@ const amountToWords = (amount) => {
 export default function AddEditInvoice() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const location = useLocation(); // ✅ PHASE 4: Get location state
+  const location = useLocation();
   const isEditing = !!id;
-  
-  // ✅ PHASE 4: Get duplicate data from location state
+
   const duplicateData = location.state?.duplicateFrom;
   const isDuplicate = location.state?.isDuplicate;
 
@@ -83,12 +129,30 @@ export default function AddEditInvoice() {
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
   const [tdsConfigs, setTdsConfigs] = useState([]);
-  
+  const [organization, setOrganization] = useState(null);
+
+  // ✅ FEATURE #19: Duplicate Check State
+  const [duplicateCheckResult, setDuplicateCheckResult] = useState(null);
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+
+  // ✅ FEATURE #11: GST Calculation Metadata
+  const [gstCalculation, setGstCalculation] = useState(null);
+
   const [formData, setFormData] = useState({
     clientId: "",
     invoiceType: "TAX_INVOICE",
     invoiceDate: new Date().toISOString().split("T")[0],
     dueDate: "",
+
+    // ✅ FEATURE #7: Additional Fields
+    poNumber: "",
+    poDate: "",
+    contractNumber: "",
+    salesPersonName: "",
+
+    // ✅ FEATURE #5: Payment Terms
+    paymentTerms: 30,
+
     items: [
       {
         productId: "",
@@ -111,80 +175,124 @@ export default function AddEditInvoice() {
     tdsSection: "",
     tdsRate: 0,
     tdsAmount: 0,
+
+    // ✅ FEATURE #8: TCS Provision
+    tcsApplicable: false,
+    tcsRate: 0,
+
+    // ✅ FEATURE #2: Reverse Charge
+    reverseCharge: false,
+
     notes: "",
     eInvoice: {
       enabled: false,
-      irn: '',
-      ackNo: '',
-      ackDate: '',
-      status: 'NOT_GENERATED',
+      irn: "",
+      ackNo: "",
+      ackDate: "",
+      status: "NOT_GENERATED",
     },
     eWayBill: {
       enabled: false,
-      ewbNumber: '',
-      ewbDate: '',
-      validUpto: '',
-      transportMode: 'ROAD',
-      vehicleNumber: '',
+      ewbNumber: "",
+      ewbDate: "",
+      validUpto: "",
+      transportMode: "ROAD",
+      vehicleNumber: "",
       distance: 0,
-      transporterName: '',
-      status: 'NOT_GENERATED',
+      transporterName: "",
+      status: "NOT_GENERATED",
     },
-    template: 'MODERN',
+    template: "MODERN",
   });
 
   useEffect(() => {
     fetchClients();
     fetchProducts();
     fetchTDSConfigs();
-    
+    fetchOrganization();
+
     if (isEditing) {
       fetchInvoice();
     } else if (isDuplicate && duplicateData) {
-      // ✅ PHASE 4: Pre-fill form with duplicate data
-      console.log('📋 Duplicating invoice:', duplicateData);
       setFormData({
         clientId: duplicateData.client?._id || "",
         invoiceType: duplicateData.invoiceType,
-        invoiceDate: new Date().toISOString().split("T")[0], // Today's date
-        dueDate: "", // Clear due date for user to set
-        items: duplicateData.items?.map((item) => ({
-          ...item,
-          productId: "",
-          discountType: item.discountType || "PERCENTAGE",
-          discountValue: item.discountValue || 0,
-          discountAmount: item.discountAmount || 0,
-          taxableAmount: item.taxableAmount || item.amount,
-        })) || [],
+        invoiceDate: new Date().toISOString().split("T")[0],
+        dueDate: "",
+        paymentTerms: 30,
+        poNumber: duplicateData.poNumber || "",
+        poDate: duplicateData.poDate?.split("T")[0] || "",
+        contractNumber: duplicateData.contractNumber || "",
+        salesPersonName: duplicateData.salesPersonName || "",
+        items:
+          duplicateData.items?.map((item) => ({
+            ...item,
+            productId: "",
+            discountType: item.discountType || "PERCENTAGE",
+            discountValue: item.discountValue || 0,
+            discountAmount: item.discountAmount || 0,
+            taxableAmount: item.taxableAmount || item.amount,
+          })) || [],
         discountType: duplicateData.discountType || "PERCENTAGE",
         discountValue: duplicateData.discountValue || 0,
         tdsSection: duplicateData.tdsSection || "",
         tdsRate: duplicateData.tdsRate || 0,
-        tdsAmount: 0, // Recalculated on submit
+        tdsAmount: 0,
+        tcsApplicable: duplicateData.tcsApplicable || false,
+        tcsRate: duplicateData.tcsRate || 0,
+        reverseCharge: false,
         notes: duplicateData.notes || "",
-        // Don't copy E-Invoice/E-Way Bill data
         eInvoice: {
           enabled: false,
-          irn: '',
-          ackNo: '',
-          ackDate: '',
-          status: 'NOT_GENERATED',
+          irn: "",
+          ackNo: "",
+          ackDate: "",
+          status: "NOT_GENERATED",
         },
         eWayBill: {
           enabled: false,
-          ewbNumber: '',
-          ewbDate: '',
-          validUpto: '',
-          transportMode: 'ROAD',
-          vehicleNumber: '',
+          ewbNumber: "",
+          ewbDate: "",
+          validUpto: "",
+          transportMode: "ROAD",
+          vehicleNumber: "",
           distance: 0,
-          transporterName: '',
-          status: 'NOT_GENERATED',
+          transporterName: "",
+          status: "NOT_GENERATED",
         },
-        template: duplicateData.template || 'MODERN',
+        template: duplicateData.template || "MODERN",
       });
     }
   }, [id, isDuplicate, duplicateData]);
+
+  // ✅ FEATURE #5: Auto-calculate due date when payment terms change
+  useEffect(() => {
+    if (formData.invoiceDate && formData.paymentTerms) {
+      const invoiceDate = new Date(formData.invoiceDate);
+      const dueDate = new Date(invoiceDate);
+      dueDate.setDate(dueDate.getDate() + parseInt(formData.paymentTerms));
+      setFormData((prev) => ({
+        ...prev,
+        dueDate: dueDate.toISOString().split("T")[0],
+      }));
+    }
+  }, [formData.invoiceDate, formData.paymentTerms]);
+
+  // ✅ FEATURE #11: Calculate GST metadata when client or items change
+  useEffect(() => {
+    if (formData.clientId && formData.items.length > 0 && organization) {
+      calculateGSTMeta();
+    }
+  }, [formData.clientId, formData.items, organization]);
+
+  const fetchOrganization = async () => {
+    try {
+      const response = await api.get("/api/organization");
+      setOrganization(response.data);
+    } catch (error) {
+      console.error("Error fetching organization:", error);
+    }
+  };
 
   const fetchClients = async () => {
     try {
@@ -223,6 +331,15 @@ export default function AddEditInvoice() {
         invoiceType: response.data.invoiceType,
         invoiceDate: response.data.invoiceDate?.split("T")[0],
         dueDate: response.data.dueDate?.split("T")[0],
+        paymentTerms: Math.ceil(
+          (new Date(response.data.dueDate) -
+            new Date(response.data.invoiceDate)) /
+            (1000 * 60 * 60 * 24)
+        ),
+        poNumber: response.data.poNumber || "",
+        poDate: response.data.poDate?.split("T")[0] || "",
+        contractNumber: response.data.contractNumber || "",
+        salesPersonName: response.data.salesPersonName || "",
         items:
           response.data.items?.map((item) => ({
             ...item,
@@ -237,31 +354,99 @@ export default function AddEditInvoice() {
         tdsSection: response.data.tdsSection || "",
         tdsRate: response.data.tdsRate || 0,
         tdsAmount: response.data.tdsAmount || 0,
+        tcsApplicable: response.data.tcsApplicable || false,
+        tcsRate: response.data.tcsRate || 0,
+        reverseCharge: response.data.reverseCharge || false,
         notes: response.data.notes || "",
         eInvoice: response.data.eInvoice || {
           enabled: false,
-          irn: '',
-          ackNo: '',
-          ackDate: '',
-          status: 'NOT_GENERATED',
+          irn: "",
+          ackNo: "",
+          ackDate: "",
+          status: "NOT_GENERATED",
         },
         eWayBill: response.data.eWayBill || {
           enabled: false,
-          ewbNumber: '',
-          ewbDate: '',
-          validUpto: '',
-          transportMode: 'ROAD',
-          vehicleNumber: '',
+          ewbNumber: "",
+          ewbDate: "",
+          validUpto: "",
+          transportMode: "ROAD",
+          vehicleNumber: "",
           distance: 0,
-          transporterName: '',
-          status: 'NOT_GENERATED',
+          transporterName: "",
+          status: "NOT_GENERATED",
         },
-        template: response.data.template || 'MODERN',
+        template: response.data.template || "MODERN",
       });
     } catch (error) {
       console.error("Error fetching invoice:", error);
       alert("Failed to fetch invoice details");
       navigate("/invoices");
+    }
+  };
+
+  // ✅ FEATURE #11: Calculate GST Metadata
+  const calculateGSTMeta = async () => {
+    try {
+      const client = clients.find((c) => c._id === formData.clientId);
+      if (!client || !organization) return;
+
+      const clientStateCode = client.gstin?.substring(0, 2) || null;
+      const orgStateCode = organization.gstin?.substring(0, 2) || null;
+
+      if (!client.gstin) {
+        setGstCalculation({
+          transactionInfo: {
+            type: "B2C",
+            description: "Business to Consumer (Unregistered)",
+            gstSplit: "CGST+SGST",
+            orgState: organization.state || "N/A",
+            clientState: "Unregistered",
+          },
+          isInterstate: false,
+        });
+      } else if (clientStateCode === orgStateCode) {
+        setGstCalculation({
+          transactionInfo: {
+            type: "B2B_INTRASTATE",
+            description: "Business to Business (Same State)",
+            gstSplit: "CGST+SGST",
+            orgState: organization.state || "N/A",
+            clientState: client.billingState || "N/A",
+          },
+          isInterstate: false,
+        });
+      } else {
+        setGstCalculation({
+          transactionInfo: {
+            type: "B2B_INTERSTATE",
+            description: "Business to Business (Different State)",
+            gstSplit: "IGST",
+            orgState: organization.state || "N/A",
+            clientState: client.billingState || "N/A",
+          },
+          isInterstate: true,
+        });
+      }
+    } catch (error) {
+      console.error("Error calculating GST meta:", error);
+    }
+  };
+
+  // ✅ FEATURE #19: Check for Duplicate Invoice Number
+  const checkDuplicateInvoiceNumber = async (invoiceNumber) => {
+    if (!invoiceNumber || isEditing) return;
+
+    setCheckingDuplicate(true);
+    try {
+      const response = await api.get("/api/invoices/check-duplicate", {
+        params: { invoiceNumber },
+      });
+      setDuplicateCheckResult(response.data);
+    } catch (error) {
+      console.error("Error checking duplicate:", error);
+    } finally {
+      setCheckingDuplicate(false);
     }
   };
 
@@ -426,7 +611,13 @@ export default function AddEditInvoice() {
 
     const totalWithTax = taxableAmount + totalTax;
     const tdsAmount = (taxableAmount * formData.tdsRate) / 100;
-    const total = totalWithTax - tdsAmount;
+
+    // ✅ FEATURE #8: TCS Calculation
+    const tcsAmount = formData.tcsApplicable
+      ? (taxableAmount * formData.tcsRate) / 100
+      : 0;
+
+    const total = totalWithTax + tcsAmount - tdsAmount;
 
     return {
       itemsTotal,
@@ -437,12 +628,20 @@ export default function AddEditInvoice() {
       totalTax,
       totalWithTax,
       tdsAmount,
+      tcsAmount,
       total,
     };
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ FEATURE #19: Check for duplicate before submitting
+    if (duplicateCheckResult?.exists && !isEditing) {
+      alert("Invoice number already exists! Please change the invoice number.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -453,12 +652,19 @@ export default function AddEditInvoice() {
         invoiceType: formData.invoiceType,
         invoiceDate: formData.invoiceDate,
         dueDate: formData.dueDate,
+        poNumber: formData.poNumber,
+        poDate: formData.poDate || null,
+        contractNumber: formData.contractNumber,
+        salesPersonName: formData.salesPersonName,
         items: formData.items.map(({ productId, ...item }) => item),
         discountType: formData.discountType,
         discountValue: formData.discountValue,
         tdsSection: formData.tdsSection || null,
         tdsRate: formData.tdsRate || 0,
         tdsAmount: totals.tdsAmount || 0,
+        tcsApplicable: formData.tcsApplicable,
+        tcsRate: formData.tcsRate || 0,
+        reverseCharge: formData.reverseCharge,
         notes: formData.notes,
         eInvoice: formData.eInvoice,
         eWayBill: formData.eWayBill,
@@ -472,7 +678,11 @@ export default function AddEditInvoice() {
         alert("Invoice updated successfully");
       } else {
         await api.post("/api/invoices", invoiceData);
-        alert(isDuplicate ? "Duplicate invoice created successfully" : "Invoice created successfully");
+        alert(
+          isDuplicate
+            ? "Duplicate invoice created successfully"
+            : "Invoice created successfully"
+        );
       }
       navigate("/invoices");
     } catch (error) {
@@ -489,7 +699,6 @@ export default function AddEditInvoice() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => navigate("/invoices")}
@@ -498,9 +707,12 @@ export default function AddEditInvoice() {
             <ArrowLeft className="w-5 h-5" />
             Back to Invoices
           </button>
-          {/* ✅ PHASE 4: Updated title for duplicate */}
           <h1 className="text-2xl font-bold text-gray-900">
-            {isEditing ? "Edit Invoice" : isDuplicate ? "Duplicate Invoice" : "Create New Invoice"}
+            {isEditing
+              ? "Edit Invoice"
+              : isDuplicate
+              ? "Duplicate Invoice"
+              : "Create New Invoice"}
           </h1>
           <p className="text-gray-600 mt-1">
             {isEditing
@@ -572,6 +784,33 @@ export default function AddEditInvoice() {
                 />
               </div>
 
+              {/* ✅ FEATURE #5: Payment Terms Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Terms <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={formData.paymentTerms}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      paymentTerms: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="0">Immediate</option>
+                  <option value="7">Net 7 Days</option>
+                  <option value="15">Net 15 Days</option>
+                  <option value="30">Net 30 Days</option>
+                  <option value="45">Net 45 Days</option>
+                  <option value="60">Net 60 Days</option>
+                  <option value="90">Net 90 Days</option>
+                </select>
+              </div>
+
+              {/* Due Date (Auto-calculated) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Due Date <span className="text-red-500">*</span>
@@ -583,11 +822,225 @@ export default function AddEditInvoice() {
                   onChange={(e) =>
                     setFormData({ ...formData, dueDate: e.target.value })
                   }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-blue-50"
+                />
+                <p className="text-xs text-blue-600 mt-1">
+                  Auto-calculated from Payment Terms
+                </p>
+              </div>
+
+              {/* ✅ FEATURE #7: Additional Fields */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.poNumber}
+                  onChange={(e) =>
+                    setFormData({ ...formData, poNumber: e.target.value })
+                  }
+                  placeholder="Purchase Order Number"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.poDate}
+                  onChange={(e) =>
+                    setFormData({ ...formData, poDate: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Contract Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.contractNumber}
+                  onChange={(e) =>
+                    setFormData({ ...formData, contractNumber: e.target.value })
+                  }
+                  placeholder="Contract Reference Number"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Sales Person Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.salesPersonName}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      salesPersonName: e.target.value,
+                    })
+                  }
+                  placeholder="Sales Representative"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
           </div>
+
+          {/* ✅ FEATURE #2: Reverse Charge & FEATURE #8: TCS */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Special Tax Provisions
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Reverse Charge */}
+              <div className="col-span-2">
+                <div className="flex items-center gap-3 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <input
+                    type="checkbox"
+                    id="reverseCharge"
+                    checked={formData.reverseCharge || false}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        reverseCharge: e.target.checked,
+                      })
+                    }
+                    className="w-5 h-5 text-orange-600"
+                  />
+                  <label htmlFor="reverseCharge" className="flex-1">
+                    <p className="text-sm font-medium text-orange-900">
+                      ⚠️ Reverse Charge Applicable
+                    </p>
+                    <p className="text-xs text-orange-600 mt-1">
+                      Tax is payable by the recipient under Section 9(3) of CGST
+                      Act. This will be shown on the invoice PDF.
+                    </p>
+                  </label>
+                </div>
+              </div>
+
+              {/* TCS Checkbox */}
+              <div className="col-span-2">
+                <div className="flex items-center gap-3 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <input
+                    type="checkbox"
+                    id="tcsApplicable"
+                    checked={formData.tcsApplicable || false}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        tcsApplicable: e.target.checked,
+                        tcsRate: e.target.checked ? 0.1 : 0,
+                      })
+                    }
+                    className="w-5 h-5 text-purple-600"
+                  />
+                  <label htmlFor="tcsApplicable" className="flex-1">
+                    <p className="text-sm font-medium text-purple-900">
+                      TCS (Tax Collected at Source) Applicable
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      Section 206C(1H) - Applicable on sale of goods &gt; ₹50
+                      lakh per annum
+                    </p>
+                  </label>
+                </div>
+              </div>
+
+              {/* TCS Rate Input */}
+              {formData.tcsApplicable && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    TCS Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="10"
+                    value={formData.tcsRate}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        tcsRate: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  />
+                  <p className="text-xs text-purple-600 mt-1">
+                    TCS Amount: ₹
+                    {totals.tcsAmount.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ✅ FEATURE #11: CGST/SGST Visual Indicator */}
+          {gstCalculation && formData.clientId && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  GST Calculation Method
+                </h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-blue-600 mb-1">Transaction Type:</p>
+                    <p className="font-semibold text-blue-900">
+                      {gstCalculation.transactionInfo?.description ||
+                        "Calculating..."}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-blue-600 mb-1">GST Split:</p>
+                    <p className="font-semibold text-blue-900">
+                      {gstCalculation.transactionInfo?.gstSplit || "N/A"}
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    {gstCalculation.isInterstate ? (
+                      <div className="flex items-center gap-2 text-orange-600 bg-orange-100 px-3 py-2 rounded">
+                        <AlertTriangle className="w-5 h-5" />
+                        <span className="font-medium">
+                          Interstate supply - IGST applicable
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-green-600 bg-green-100 px-3 py-2 rounded">
+                        <CheckCircle className="w-5 h-5" />
+                        <span className="font-medium">
+                          Intrastate supply - CGST + SGST applicable
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-blue-600 mb-1">Your State:</p>
+                    <p className="font-semibold">
+                      {gstCalculation.transactionInfo?.orgState || "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-blue-600 mb-1">Client State:</p>
+                    <p className="font-semibold">
+                      {gstCalculation.transactionInfo?.clientState || "N/A"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Line Items */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -666,122 +1119,182 @@ export default function AddEditInvoice() {
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Description *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Item description"
-                        value={item.description}
-                        onChange={(e) =>
-                          handleItemChange(index, "description", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+                  <div className="space-y-4">
+  {/* Row 1: Description & Type */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Description *
+      </label>
+      <input
+        type="text"
+        required
+        placeholder="Item description"
+        value={item.description}
+        onChange={(e) =>
+          handleItemChange(index, "description", e.target.value)
+        }
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Type *
-                      </label>
-                      <select
-                        required
-                        value={item.itemType}
-                        onChange={(e) =>
-                          handleItemChange(index, "itemType", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="PRODUCT">Product</option>
-                        <option value="SERVICE">Service</option>
-                      </select>
-                    </div>
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Type *
+      </label>
+      <select
+        required
+        value={item.itemType}
+        onChange={(e) =>
+          handleItemChange(index, "itemType", e.target.value)
+        }
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="PRODUCT">Product</option>
+        <option value="SERVICE">Service</option>
+      </select>
+    </div>
+  </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        HSN/SAC
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="998314"
-                        value={item.hsnSacCode}
-                        onChange={(e) =>
-                          handleItemChange(index, "hsnSacCode", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+  {/* Row 2: HSN/SAC (Full Width, Prominent) */}
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      HSN/SAC Code *
+    </label>
+    
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4 space-y-3">
+      {/* Enhanced HSN Search Component */}
+      <HSNSearch
+        value={item.hsnSacCode}
+        onChange={(code) =>
+          handleItemChange(index, "hsnSacCode", code)
+        }
+        itemType={item.itemType}
+        onSelect={(hsn) => {
+          handleItemChange(index, "hsnSacCode", hsn.code);
+          if (hsn.defaultGstRate) {
+            handleItemChange(index, "gstRate", hsn.defaultGstRate);
+          }
+          try {
+            api.post(`/api/hsn/${hsn.code}/increment-usage`);
+          } catch (error) {
+            console.log("Usage tracking failed");
+          }
+        }}
+        required={true}
+        placeholder={
+          organization?.annualTurnover <= 50000000
+            ? "Search or enter HSN/SAC (4 digits)"
+            : "Search or enter HSN/SAC (6+ digits)"
+        }
+      />
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Quantity *
-                      </label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        step="0.01"
-                        value={item.quantity}
-                        onChange={(e) =>
-                          handleItemChange(
-                            index,
-                            "quantity",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+      {/* Validation Hint */}
+      <div className="flex items-start gap-2 text-xs">
+        <div className="flex-shrink-0 w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+          ℹ
+        </div>
+        <div className="text-blue-700">
+          {organization?.annualTurnover <= 50000000 ? (
+            <p>
+              <strong>4 digits required</strong> (Turnover ≤ ₹5 crore)
+              <br />
+              Example: 8471, 9983
+            </p>
+          ) : (
+            <p>
+              <strong>6+ digits required</strong> (Turnover &gt; ₹5 crore)
+              <br />
+              Example: 847130, 998314
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Unit *
-                      </label>
-                      <select
-                        required
-                        value={item.unit}
-                        onChange={(e) =>
-                          handleItemChange(index, "unit", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="PCS">Pcs</option>
-                        <option value="KG">Kg</option>
-                        <option value="LITER">Liter</option>
-                        <option value="METER">Meter</option>
-                        <option value="BOX">Box</option>
-                        <option value="HOUR">Hour</option>
-                        <option value="DAY">Day</option>
-                        <option value="MONTH">Month</option>
-                        <option value="SET">Set</option>
-                        <option value="UNIT">Unit</option>
-                      </select>
-                    </div>
+  {/* Row 3: Quantity, Unit, Rate, GST */}
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Quantity *
+      </label>
+      <input
+        type="number"
+        required
+        min="0"
+        step="0.01"
+        value={item.quantity}
+        onChange={(e) =>
+          handleItemChange(index, "quantity", parseFloat(e.target.value) || 0)
+        }
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Rate *
-                      </label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        step="0.01"
-                        value={item.rate}
-                        onChange={(e) =>
-                          handleItemChange(
-                            index,
-                            "rate",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Unit *
+      </label>
+      <select
+        required
+        value={item.unit}
+        onChange={(e) =>
+          handleItemChange(index, "unit", e.target.value)
+        }
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="PCS">Pcs</option>
+        <option value="KG">Kg</option>
+        <option value="LITER">Liter</option>
+        <option value="METER">Meter</option>
+        <option value="BOX">Box</option>
+        <option value="HOUR">Hour</option>
+        <option value="DAY">Day</option>
+        <option value="MONTH">Month</option>
+        <option value="SET">Set</option>
+        <option value="UNIT">Unit</option>
+      </select>
+    </div>
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Rate *
+      </label>
+      <input
+        type="number"
+        required
+        min="0"
+        step="0.01"
+        value={item.rate}
+        onChange={(e) =>
+          handleItemChange(index, "rate", parseFloat(e.target.value) || 0)
+        }
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        GST % *
+      </label>
+      <select
+        required
+        value={item.gstRate}
+        onChange={(e) =>
+          handleItemChange(index, "gstRate", parseFloat(e.target.value))
+        }
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="0">0%</option>
+        <option value="5">5%</option>
+        <option value="12">12%</option>
+        <option value="18">18%</option>
+        <option value="28">28%</option>
+      </select>
+    </div>
+  </div>
+</div>
 
                   {/* Item-level Discount & GST */}
                   <div className="grid grid-cols-1 md:grid-cols-7 gap-3 pt-2 border-t border-gray-200">
@@ -980,7 +1493,7 @@ export default function AddEditInvoice() {
             </div>
           </div>
 
-          {/* ✅ PHASE 3: E-INVOICE SECTION */}
+          {/* E-Invoice Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
               <div className="flex items-center gap-2 mb-4">
@@ -991,12 +1504,18 @@ export default function AddEditInvoice() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      eInvoice: { ...formData.eInvoice, enabled: e.target.checked },
+                      eInvoice: {
+                        ...formData.eInvoice,
+                        enabled: e.target.checked,
+                      },
                     })
                   }
                   className="w-4 h-4 text-blue-600"
                 />
-                <label htmlFor="eInvoiceEnabled" className="text-sm font-semibold text-blue-900">
+                <label
+                  htmlFor="eInvoiceEnabled"
+                  className="text-sm font-semibold text-blue-900"
+                >
                   E-Invoice (Manual Entry)
                 </label>
                 <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
@@ -1012,11 +1531,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="text"
-                      value={formData.eInvoice?.irn || ''}
+                      value={formData.eInvoice?.irn || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eInvoice: { ...formData.eInvoice, irn: e.target.value },
+                          eInvoice: {
+                            ...formData.eInvoice,
+                            irn: e.target.value,
+                          },
                         })
                       }
                       placeholder="Enter IRN from GST Portal"
@@ -1030,11 +1552,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="text"
-                      value={formData.eInvoice?.ackNo || ''}
+                      value={formData.eInvoice?.ackNo || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eInvoice: { ...formData.eInvoice, ackNo: e.target.value },
+                          eInvoice: {
+                            ...formData.eInvoice,
+                            ackNo: e.target.value,
+                          },
                         })
                       }
                       placeholder="Ack No from GST Portal"
@@ -1048,11 +1573,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="date"
-                      value={formData.eInvoice?.ackDate?.split('T')[0] || ''}
+                      value={formData.eInvoice?.ackDate?.split("T")[0] || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eInvoice: { ...formData.eInvoice, ackDate: e.target.value },
+                          eInvoice: {
+                            ...formData.eInvoice,
+                            ackDate: e.target.value,
+                          },
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -1064,11 +1592,14 @@ export default function AddEditInvoice() {
                       Status
                     </label>
                     <select
-                      value={formData.eInvoice?.status || 'NOT_GENERATED'}
+                      value={formData.eInvoice?.status || "NOT_GENERATED"}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eInvoice: { ...formData.eInvoice, status: e.target.value },
+                          eInvoice: {
+                            ...formData.eInvoice,
+                            status: e.target.value,
+                          },
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -1082,12 +1613,13 @@ export default function AddEditInvoice() {
               )}
 
               <p className="text-xs text-blue-600 mt-3">
-                💡 Manual mode: Enter details from GST Portal. API integration coming soon.
+                💡 Manual mode: Enter details from GST Portal. API integration
+                coming soon.
               </p>
             </div>
           </div>
 
-          {/* ✅ PHASE 3: E-WAY BILL SECTION */}
+          {/* E-Way Bill Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="bg-green-50 rounded-lg p-6 border border-green-200">
               <div className="flex items-center gap-2 mb-4">
@@ -1098,12 +1630,18 @@ export default function AddEditInvoice() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      eWayBill: { ...formData.eWayBill, enabled: e.target.checked },
+                      eWayBill: {
+                        ...formData.eWayBill,
+                        enabled: e.target.checked,
+                      },
                     })
                   }
                   className="w-4 h-4 text-green-600"
                 />
-                <label htmlFor="eWayBillEnabled" className="text-sm font-semibold text-green-900">
+                <label
+                  htmlFor="eWayBillEnabled"
+                  className="text-sm font-semibold text-green-900"
+                >
                   E-Way Bill (Manual Entry)
                 </label>
                 <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
@@ -1119,11 +1657,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="text"
-                      value={formData.eWayBill?.ewbNumber || ''}
+                      value={formData.eWayBill?.ewbNumber || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, ewbNumber: e.target.value },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            ewbNumber: e.target.value,
+                          },
                         })
                       }
                       placeholder="Enter EWB Number"
@@ -1137,11 +1678,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="date"
-                      value={formData.eWayBill?.ewbDate?.split('T')[0] || ''}
+                      value={formData.eWayBill?.ewbDate?.split("T")[0] || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, ewbDate: e.target.value },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            ewbDate: e.target.value,
+                          },
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
@@ -1154,11 +1698,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="date"
-                      value={formData.eWayBill?.validUpto?.split('T')[0] || ''}
+                      value={formData.eWayBill?.validUpto?.split("T")[0] || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, validUpto: e.target.value },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            validUpto: e.target.value,
+                          },
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
@@ -1170,11 +1717,14 @@ export default function AddEditInvoice() {
                       Transport Mode
                     </label>
                     <select
-                      value={formData.eWayBill?.transportMode || 'ROAD'}
+                      value={formData.eWayBill?.transportMode || "ROAD"}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, transportMode: e.target.value },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            transportMode: e.target.value,
+                          },
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
@@ -1192,11 +1742,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="text"
-                      value={formData.eWayBill?.vehicleNumber || ''}
+                      value={formData.eWayBill?.vehicleNumber || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, vehicleNumber: e.target.value.toUpperCase() },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            vehicleNumber: e.target.value.toUpperCase(),
+                          },
                         })
                       }
                       placeholder="e.g., MH12AB1234"
@@ -1210,11 +1763,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="number"
-                      value={formData.eWayBill?.distance || ''}
+                      value={formData.eWayBill?.distance || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, distance: parseFloat(e.target.value) || 0 },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            distance: parseFloat(e.target.value) || 0,
+                          },
                         })
                       }
                       placeholder="Distance in KM"
@@ -1228,11 +1784,14 @@ export default function AddEditInvoice() {
                     </label>
                     <input
                       type="text"
-                      value={formData.eWayBill?.transporterName || ''}
+                      value={formData.eWayBill?.transporterName || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, transporterName: e.target.value },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            transporterName: e.target.value,
+                          },
                         })
                       }
                       placeholder="Transporter name"
@@ -1245,11 +1804,14 @@ export default function AddEditInvoice() {
                       Status
                     </label>
                     <select
-                      value={formData.eWayBill?.status || 'NOT_GENERATED'}
+                      value={formData.eWayBill?.status || "NOT_GENERATED"}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          eWayBill: { ...formData.eWayBill, status: e.target.value },
+                          eWayBill: {
+                            ...formData.eWayBill,
+                            status: e.target.value,
+                          },
                         })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
@@ -1264,12 +1826,13 @@ export default function AddEditInvoice() {
               )}
 
               <p className="text-xs text-green-600 mt-3">
-                💡 Manual mode: Enter details from E-Way Bill Portal. API integration coming soon.
+                💡 Manual mode: Enter details from E-Way Bill Portal. API
+                integration coming soon.
               </p>
             </div>
           </div>
 
-          {/* Invoice Summary - WITH AMOUNT IN WORDS */}
+          {/* Invoice Summary */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow-sm border border-blue-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Invoice Summary
@@ -1345,8 +1908,21 @@ export default function AddEditInvoice() {
                     })}
                   </span>
                 </div>
+                {totals.tcsAmount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-600">
+                      TCS ({formData.tcsRate}%):
+                    </span>
+                    <span className="font-medium text-purple-600">
+                      +₹
+                      {totals.tcsAmount.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm pt-2 border-t border-blue-200">
-                  <span className="text-gray-600">Total (with GST):</span>
+                  <span className="text-gray-600">Total (with GST & TCS):</span>
                   <span className="font-medium text-gray-900">
                     ₹
                     {totals.totalWithTax.toLocaleString("en-IN", {
@@ -1385,7 +1961,7 @@ export default function AddEditInvoice() {
               </div>
             </div>
 
-            {/* ✅ AMOUNT IN WORDS - ADDED HERE! */}
+            {/* Amount in Words */}
             {totals.total > 0 && (
               <div className="mt-6 pt-4 border-t-2 border-blue-300">
                 <div className="bg-blue-100 border-l-4 border-blue-600 rounded-r-lg p-4">
@@ -1412,7 +1988,7 @@ export default function AddEditInvoice() {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (duplicateCheckResult?.exists && !isEditing)}
               className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium transition-colors"
             >
               <Save className="w-4 h-4" />

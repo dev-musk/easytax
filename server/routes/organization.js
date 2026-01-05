@@ -1,6 +1,6 @@
 // ============================================
-// FILE: server/routes/organization.js (COMPLETE ENHANCED VERSION)
-// Phase 1 Implementation - Company Settings API
+// FILE: server/routes/organization.js
+// ✅ ENHANCED: Explicit $set handling for turnover updates
 // ============================================
 
 import express from 'express';
@@ -32,12 +32,16 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Update organization details
+// ✅ ENHANCED: Update organization details with explicit $set
 router.put('/', async (req, res) => {
   try {
+    console.log('📝 [PUT /] Updating organization');
+    console.log('📦 [PUT /] Request body:', JSON.stringify(req.body, null, 2));
+    
+    // ✅ FIX: Use explicit $set to ensure hooks work correctly
     const organization = await Organization.findByIdAndUpdate(
       req.user.organizationId,
-      req.body,
+      { $set: req.body }, // ✅ Explicit $set
       { new: true, runValidators: true }
     );
     
@@ -45,9 +49,13 @@ router.put('/', async (req, res) => {
       return res.status(404).json({ error: 'Organization not found' });
     }
     
+    console.log('✅ [PUT /] Organization updated');
+    console.log(`📊 [PUT /] Annual Turnover: ₹${organization.annualTurnover?.toLocaleString('en-IN') || 0}`);
+    console.log(`📏 [PUT /] HSN Digits Required: ${organization.hsnDigitsRequired}`);
+    
     res.json(organization);
   } catch (error) {
-    console.error('Error updating organization:', error);
+    console.error('❌ [PUT /] Error updating organization:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -225,7 +233,7 @@ router.delete('/signature', async (req, res) => {
   }
 });
 
-// Update bank details
+// ✅ ENHANCED: Update bank details with explicit $set
 router.patch('/bank-details', async (req, res) => {
   try {
     const organization = await Organization.findByIdAndUpdate(
@@ -342,39 +350,74 @@ router.patch('/display-settings', async (req, res) => {
   }
 });
 
-// Update annual turnover (affects HSN digit requirement)
+// ✅ ENHANCED: Dedicated turnover update endpoint with explicit handling
 router.patch('/turnover', async (req, res) => {
   try {
     const { annualTurnover } = req.body;
+    
+    console.log('📊 [PATCH /turnover] Updating annual turnover');
+    console.log(`💰 [PATCH /turnover] New turnover: ₹${annualTurnover?.toLocaleString('en-IN') || 0}`);
 
     if (annualTurnover < 0) {
       return res.status(400).json({ error: 'Annual turnover cannot be negative' });
     }
 
+    // ✅ METHOD 1: Using findByIdAndUpdate with explicit $set (recommended)
+    const organization = await Organization.findByIdAndUpdate(
+      req.user.organizationId,
+      { 
+        $set: { 
+          annualTurnover: annualTurnover 
+        } 
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    console.log(`✅ [PATCH /turnover] Turnover updated: ₹${organization.annualTurnover.toLocaleString('en-IN')}`);
+    console.log(`📏 [PATCH /turnover] HSN Digits Required: ${organization.hsnDigitsRequired}`);
+
+    res.json({
+      message: 'Annual turnover updated',
+      organization,
+      hsnDigitsRequired: organization.hsnDigitsRequired,
+      info: organization.annualTurnover <= 50000000 
+        ? '≤ ₹5 crore: 4-digit HSN required'
+        : '> ₹5 crore: 6-digit HSN required, E-Invoice mandatory'
+    });
+  } catch (error) {
+    console.error('❌ [PATCH /turnover] Error updating turnover:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Debug endpoint to check current HSN requirement
+router.get('/hsn-requirement', async (req, res) => {
+  try {
     const organization = await Organization.findById(req.user.organizationId);
 
     if (!organization) {
       return res.status(404).json({ error: 'Organization not found' });
     }
 
-    organization.annualTurnover = annualTurnover;
-
-    // Auto-update HSN digits required
-    if (annualTurnover <= 50000000) {
-      organization.hsnDigitsRequired = 4;
-    } else {
-      organization.hsnDigitsRequired = 6;
-    }
-
-    await organization.save();
-
-    res.json({
-      message: 'Annual turnover updated',
-      organization,
+    const info = {
+      annualTurnover: organization.annualTurnover,
+      annualTurnoverFormatted: `₹${organization.annualTurnover?.toLocaleString('en-IN') || 0}`,
       hsnDigitsRequired: organization.hsnDigitsRequired,
-    });
+      threshold: 50000000,
+      thresholdFormatted: '₹5,00,00,000',
+      rule: organization.annualTurnover <= 50000000 
+        ? 'Turnover ≤ ₹5 crore: 4-digit HSN required'
+        : 'Turnover > ₹5 crore: 6-digit HSN required',
+      isEInvoiceMandatory: organization.annualTurnover > 50000000,
+    };
+
+    res.json(info);
   } catch (error) {
-    console.error('Error updating turnover:', error);
+    console.error('Error fetching HSN requirement:', error);
     res.status(500).json({ error: error.message });
   }
 });

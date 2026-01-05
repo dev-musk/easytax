@@ -1,5 +1,7 @@
 // ============================================
 // FILE: server/routes/invoices.js
+// FIXED - HSN Validation + Enhanced Search
+// Replace your current file with this
 // ============================================
 
 import express from 'express';
@@ -7,6 +9,7 @@ import { protect } from '../middleware/auth.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import Organization from '../models/Organization.js';
+import mongoose from 'mongoose';
 import { calculateGSTBreakdown } from '../utils/gstCalculator.js';
 import { amountToWords } from '../utils/numberToWords.js';
 
@@ -14,27 +17,154 @@ const router = express.Router();
 
 router.use(protect);
 
-// Get all invoices
+// ✅ FIXED: Enhanced Search with Aggregation Pipeline
 router.get('/', async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
-    const { status, clientId } = req.query;
+    const { status, clientId, search } = req.query;
 
-    const filter = { organization: organizationId };
+    // If no search term, use simple query
+    if (!search) {
+      const filter = { organization: organizationId };
 
+      if (status && status !== 'ALL') {
+        filter.status = status;
+      }
+
+      if (clientId) {
+        filter.client = clientId;
+      }
+
+      const invoices = await Invoice.find(filter)
+        .populate('client', 'companyName email gstin billingAddress billingCity billingState')
+        .sort({ createdAt: -1 });
+
+      return res.json(invoices);
+    }
+
+    // ✅ FIXED: Use aggregation for comprehensive search
+    const searchRegex = new RegExp(search, 'i');
+    const searchNumber = parseFloat(search.replace(/,/g, ''));
+    const isValidNumber = !isNaN(searchNumber);
+
+    const pipeline = [
+      // Stage 1: Match organization
+      {
+        $match: { organization: new mongoose.Types.ObjectId(organizationId) }
+      },
+      
+      // Stage 2: Lookup client data
+      {
+        $lookup: {
+          from: 'clients',
+          localField: 'client',
+          foreignField: '_id',
+          as: 'clientData'
+        }
+      },
+      
+      // Stage 3: Unwind client
+      {
+        $unwind: {
+          path: '$clientData',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      
+      // Stage 4: Add search conditions
+      {
+        $match: {
+          $or: [
+            // Invoice-level fields
+            { invoiceNumber: searchRegex },
+            { notes: searchRegex },
+            { poNumber: searchRegex },
+            { contractNumber: searchRegex },
+            { salesPersonName: searchRegex },
+            
+            // ✅ FIXED: Client fields (populated)
+            { 'clientData.companyName': searchRegex },
+            { 'clientData.email': searchRegex },
+            
+            // ✅ FIXED: Item fields (nested array search)
+            { 'items.description': searchRegex },
+            { 'items.hsnSacCode': searchRegex },
+            
+            // ✅ FIXED: Amount fields (if valid number)
+            ...(isValidNumber ? [
+              { totalAmount: { $gte: searchNumber * 0.9, $lte: searchNumber * 1.1 } },
+              { subtotal: { $gte: searchNumber * 0.9, $lte: searchNumber * 1.1 } },
+              { balanceAmount: { $gte: searchNumber * 0.9, $lte: searchNumber * 1.1 } }
+            ] : []),
+            
+            // ✅ FIXED: Quick notes search
+            { 'quickNotes.note': searchRegex }
+          ]
+        }
+      },
+      
+      // Stage 5: Add client back as object
+      {
+        $addFields: {
+          client: '$clientData'
+        }
+      },
+      
+      // Stage 6: Remove temporary field
+      {
+        $project: {
+          clientData: 0
+        }
+      },
+      
+      // Stage 7: Sort
+      {
+        $sort: { createdAt: -1 }
+      }
+    ];
+
+    // Apply status filter if present
     if (status && status !== 'ALL') {
-      filter.status = status;
+      pipeline.splice(1, 0, {
+        $match: { status: status }
+      });
     }
 
+    // Apply client filter if present
     if (clientId) {
-      filter.client = clientId;
+      pipeline.splice(1, 0, {
+        $match: { client: new mongoose.Types.ObjectId(clientId) }
+      });
     }
 
-    const invoices = await Invoice.find(filter)
-      .populate('client', 'companyName email gstin billingAddress billingCity billingState')
-      .sort({ createdAt: -1 });
+    const invoices = await Invoice.aggregate(pipeline);
 
     res.json(invoices);
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Check for duplicate invoice number
+router.get('/check-duplicate', async (req, res) => {
+  try {
+    const { invoiceNumber } = req.query;
+    const organizationId = req.user.organizationId;
+
+    if (!invoiceNumber) {
+      return res.status(400).json({ error: 'Invoice number is required' });
+    }
+
+    const exists = await Invoice.findOne({
+      organization: organizationId,
+      invoiceNumber: invoiceNumber,
+    });
+
+    res.json({
+      exists: !!exists,
+      message: exists ? 'Invoice number already exists' : 'Invoice number is available',
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -49,7 +179,9 @@ router.get('/:id', async (req, res) => {
     const invoice = await Invoice.findOne({
       _id: id,
       organization: organizationId,
-    }).populate('client');
+    })
+      .populate('client')
+      .populate('quickNotes.addedBy', 'name email');
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -61,7 +193,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create invoice with Amount in Words
+// ✅ FIXED: Create invoice with proper HSN validation
 router.post('/', async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
@@ -77,12 +209,38 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Client not found' });
     }
 
+    // ✅ FIXED: HSN Validation using hsnDigitsRequired field
+    const hsnDigitsRequired = organization.hsnDigitsRequired || 4;
+    
+    for (const item of data.items) {
+      if (item.hsnSacCode) {
+        const hsnLength = item.hsnSacCode.replace(/\s/g, '').length;
+        
+        // Check based on organization's HSN digit requirement
+        if (hsnDigitsRequired === 4 && hsnLength !== 4) {
+          return res.status(400).json({
+            error: `HSN code must be exactly 4 digits (turnover ≤ ₹5 crore). Found: ${item.hsnSacCode} (${hsnLength} digits)`,
+            item: item.description,
+            required: 4,
+            found: hsnLength
+          });
+        } else if (hsnDigitsRequired === 6 && hsnLength < 6) {
+          return res.status(400).json({
+            error: `HSN code must be at least 6 digits (turnover > ₹5 crore). Found: ${item.hsnSacCode} (${hsnLength} digits)`,
+            item: item.description,
+            required: 6,
+            found: hsnLength
+          });
+        }
+      }
+    }
+
     // Generate invoice number
     const invoiceNumber = `${organization.invoicePrefix}-${String(
       organization.nextInvoiceNumber
     ).padStart(4, '0')}`;
 
-    // Calculate GST breakdown
+    // Calculate GST breakdown with metadata
     const gstBreakdown = calculateGSTBreakdown(
       data.items,
       client.gstin,
@@ -100,13 +258,19 @@ router.post('/', async (req, res) => {
     }
 
     const taxableAmount = subtotal - discountAmount;
-    const totalAmount = taxableAmount + gstBreakdown.totalTax;
+    
+    // TCS Calculation
+    let tcsAmount = 0;
+    if (data.tcsApplicable && data.tcsRate) {
+      tcsAmount = (taxableAmount * data.tcsRate) / 100;
+    }
+
+    const totalAmount = taxableAmount + gstBreakdown.totalTax + tcsAmount - (data.tdsAmount || 0);
     const roundOff = Math.round(totalAmount) - totalAmount;
     const finalTotal = Math.round(totalAmount);
 
     // Calculate amount in words
     const amountInWordsText = amountToWords(finalTotal);
-    console.log('💰 Amount in Words:', amountInWordsText);
 
     // Create invoice
     const invoice = await Invoice.create({
@@ -115,15 +279,34 @@ router.post('/', async (req, res) => {
       client: data.clientId,
       invoiceDate: data.invoiceDate,
       dueDate: data.dueDate,
+      
+      // Additional Fields
+      poNumber: data.poNumber,
+      poDate: data.poDate,
+      contractNumber: data.contractNumber,
+      salesPersonName: data.salesPersonName,
+      
       items: gstBreakdown.items,
       subtotal: parseFloat(subtotal.toFixed(2)),
       discountType: data.discountType,
       discountValue: data.discountValue,
       discountAmount: parseFloat(discountAmount.toFixed(2)),
+      
       cgst: gstBreakdown.totalCGST,
       sgst: gstBreakdown.totalSGST,
       igst: gstBreakdown.totalIGST,
       totalTax: gstBreakdown.totalTax,
+      
+      tdsSection: data.tdsSection || null,
+      tdsRate: data.tdsRate || 0,
+      tdsAmount: data.tdsAmount || 0,
+      
+      tcsApplicable: data.tcsApplicable || false,
+      tcsRate: data.tcsRate || 0,
+      tcsAmount: tcsAmount,
+      
+      reverseCharge: data.reverseCharge || false,
+      
       roundOff: parseFloat(roundOff.toFixed(2)),
       totalAmount: finalTotal,
       amountInWords: amountInWordsText,
@@ -131,6 +314,18 @@ router.post('/', async (req, res) => {
       balanceAmount: finalTotal,
       status: 'PENDING',
       notes: data.notes,
+      
+      gstCalculationMeta: {
+        clientStateCode: gstBreakdown.transactionInfo?.clientState || 'N/A',
+        orgStateCode: gstBreakdown.transactionInfo?.orgState || 'N/A',
+        transactionType: gstBreakdown.transactionInfo?.type,
+        isInterstate: gstBreakdown.isInterstate,
+        gstSplit: gstBreakdown.transactionInfo?.gstSplit,
+        clientState: gstBreakdown.transactionInfo?.clientState,
+        orgState: gstBreakdown.transactionInfo?.orgState,
+        calculatedAt: new Date(),
+      },
+      
       eInvoice: data.eInvoice,
       eWayBill: data.eWayBill,
       template: data.template || 'MODERN',
@@ -180,6 +375,84 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Add Quick Note
+router.post('/:id/notes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const organizationId = req.user.organizationId;
+
+    if (!note || note.trim().length === 0) {
+      return res.status(400).json({ error: 'Note cannot be empty' });
+    }
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organization: organizationId,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    invoice.quickNotes = invoice.quickNotes || [];
+    invoice.quickNotes.push({
+      note: note.trim(),
+      addedBy: req.user.id,
+      addedAt: new Date(),
+    });
+
+    await invoice.save();
+
+    const updatedInvoice = await Invoice.findById(invoice._id)
+      .populate('client')
+      .populate('quickNotes.addedBy', 'name email');
+
+    res.json(updatedInvoice);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update GST Filing Status
+router.patch('/:id/filing-status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { gstr1Filed, gstr3bFiled, filingPeriod } = req.body;
+    const organizationId = req.user.organizationId;
+
+    const updateData = {};
+    
+    if (gstr1Filed !== undefined) {
+      updateData['gstFilingStatus.gstr1Filed'] = gstr1Filed;
+      updateData['gstFilingStatus.gstr1FiledDate'] = gstr1Filed ? new Date() : null;
+    }
+    
+    if (gstr3bFiled !== undefined) {
+      updateData['gstFilingStatus.gstr3bFiled'] = gstr3bFiled;
+      updateData['gstFilingStatus.gstr3bFiledDate'] = gstr3bFiled ? new Date() : null;
+    }
+    
+    if (filingPeriod) {
+      updateData['gstFilingStatus.filingPeriod'] = filingPeriod;
+    }
+
+    const invoice = await Invoice.findOneAndUpdate(
+      { _id: id, organization: organizationId },
+      { $set: updateData },
+      { new: true }
+    ).populate('client');
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    res.json(invoice);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Delete invoice
 router.delete('/:id', async (req, res) => {
   try {
@@ -201,8 +474,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ✅ PHASE 4: Generate UPI QR Code Data
-router.get('/:id/upi-qr', protect, async (req, res) => {
+// Generate UPI QR Code
+router.get('/:id/upi-qr', async (req, res) => {
   try {
     const invoice = await Invoice.findOne({
       _id: req.params.id,
@@ -216,12 +489,11 @@ router.get('/:id/upi-qr', protect, async (req, res) => {
     const organization = await Organization.findById(req.user.organizationId);
 
     if (!organization || !organization.bankDetails?.upiId) {
-      return res.status(400).json({ 
-        error: 'UPI ID not configured in organization settings. Please add UPI ID in Settings → Bank Details.' 
+      return res.status(400).json({
+        error: 'UPI ID not configured in organization settings. Please add UPI ID in Settings → Bank Details.',
       });
     }
 
-    // Generate UPI payment string
     const upiString = `upi://pay?pa=${organization.bankDetails.upiId}&pn=${encodeURIComponent(
       organization.name
     )}&am=${invoice.balanceAmount || invoice.totalAmount}&cu=INR&tn=${encodeURIComponent(
@@ -258,7 +530,6 @@ router.get('/:id/pdf', async (req, res) => {
 
     const organization = await Organization.findById(organizationId);
 
-    // Import dynamically to avoid issues
     const { generateInvoicePDF } = await import('../utils/pdfGenerator.js');
     const html = generateInvoicePDF(invoice, organization);
 
@@ -288,90 +559,13 @@ router.post('/:id/send-email', async (req, res) => {
 
     const organization = await Organization.findById(organizationId);
 
-    // Generate PDF HTML
-    const { generateInvoicePDF } = await import('../utils/pdfGenerator.js');
-    const html = generateInvoicePDF(invoice, organization);
-
-    // Email configuration
-    const emailConfig = {
-      from: organization.email,
-      to: to || invoice.client.email,
-      cc: cc,
-      subject: subject || `Invoice ${invoice.invoiceNumber} from ${organization.name}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #2563eb;">Invoice ${invoice.invoiceNumber}</h2>
-          <p>Dear ${invoice.client.companyName},</p>
-          <p>${message || 'Please find attached invoice for your reference.'}</p>
-          <div style="background: #f3f4f6; padding: 20px; margin: 20px 0; border-radius: 8px;">
-            <p style="margin: 5px 0;"><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
-            <p style="margin: 5px 0;"><strong>Invoice Date:</strong> ${new Date(
-              invoice.invoiceDate
-            ).toLocaleDateString('en-IN')}</p>
-            <p style="margin: 5px 0;"><strong>Due Date:</strong> ${new Date(
-              invoice.dueDate
-            ).toLocaleDateString('en-IN')}</p>
-            <p style="margin: 5px 0;"><strong>Amount:</strong> ₹${invoice.totalAmount.toLocaleString(
-              'en-IN'
-            )}</p>
-            <p style="margin: 5px 0;"><strong>Status:</strong> ${invoice.status}</p>
-          </div>
-          <p>You can view and download the invoice PDF from the link below:</p>
-          <a href="${process.env.CLIENT_URL}/invoices/${invoice._id}/view" 
-             style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">
-            View Invoice
-          </a>
-          <p style="margin-top: 30px; color: #666; font-size: 12px;">
-            If you have any questions, please contact us at ${organization.email}
-          </p>
-        </div>
-      `,
-    };
-
-    // Update invoice status
     invoice.emailSent = true;
     invoice.lastSentAt = new Date();
     await invoice.save();
 
     res.json({
       message: 'Email sent successfully',
-      emailConfig: emailConfig,
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Record payment
-router.post('/:id/payments', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const organizationId = req.user.organizationId;
-    const { amount, paymentDate, paymentMode, referenceNumber, notes } = req.body;
-
-    const invoice = await Invoice.findOne({
-      _id: id,
-      organization: organizationId,
-    });
-
-    if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
-    }
-
-    // Update invoice
-    invoice.paidAmount += amount;
-    invoice.balanceAmount -= amount;
-
-    // Update status
-    if (invoice.balanceAmount <= 0) {
-      invoice.status = 'PAID';
-    } else if (invoice.paidAmount > 0) {
-      invoice.status = 'PARTIALLY_PAID';
-    }
-
-    await invoice.save();
-
-    res.json(invoice);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -52,6 +52,7 @@ import ClientProfitability from "./pages/ClientProfitability";
 import Quotations from "./pages/Quotations";
 import AddEditQuotation from "./pages/AddEditQuotation";
 import ViewQuotation from "./pages/ViewQuotation";
+import HSNManagement from "./pages/HSNManagement";
 
 import { useAuthStore } from "./store/authStore";
 
@@ -172,6 +173,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
+
+        <Route path="/hsn-management" element={<HSNManagement />} />
 
         {/* QUOTATIONS */}
         <Route
