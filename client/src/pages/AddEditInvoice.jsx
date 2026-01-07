@@ -17,6 +17,9 @@ import {
   Percent,
   AlertTriangle,
   CheckCircle,
+  Upload, // ← ADD THIS
+  X, // ← ADD THIS (if not already there)
+  Paperclip, // ← ADD THIS
 } from "lucide-react";
 
 // Number to words converter (client-side)
@@ -116,7 +119,7 @@ const amountToWords = (amount) => {
   return words;
 };
 
-export default function AddEditInvoice() {
+export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
@@ -138,9 +141,13 @@ export default function AddEditInvoice() {
   // ✅ FEATURE #11: GST Calculation Metadata
   const [gstCalculation, setGstCalculation] = useState(null);
 
+  // ✅ FEATURE #36: File Upload State
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(false);
+
   const [formData, setFormData] = useState({
     clientId: "",
-    invoiceType: "TAX_INVOICE",
+    invoiceType: propInvoiceType || "TAX_INVOICE",
     invoiceDate: new Date().toISOString().split("T")[0],
     dueDate: "",
 
@@ -284,6 +291,17 @@ export default function AddEditInvoice() {
       calculateGSTMeta();
     }
   }, [formData.clientId, formData.items, organization]);
+
+  // ✅ FEATURE #29: Set invoice type from prop
+useEffect(() => {
+  if (propInvoiceType && !isEditing) {
+    setFormData(prev => ({
+      ...prev,
+      invoiceType: propInvoiceType
+    }));
+  }
+}, [propInvoiceType, isEditing]);
+
 
   const fetchOrganization = async () => {
     try {
@@ -675,9 +693,54 @@ export default function AddEditInvoice() {
 
       if (isEditing) {
         await api.put(`/api/invoices/${id}`, invoiceData);
+
+        // ✅ FEATURE #36: Upload files if editing
+        if (selectedFiles.length > 0) {
+          setUploadProgress(true);
+          const formData = new FormData();
+          selectedFiles.forEach((file) => {
+            formData.append("files", file);
+          });
+
+          try {
+            await api.post(`/api/invoices/${id}/attachments`, formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+          } catch (uploadError) {
+            console.error("Upload error:", uploadError);
+            alert("Invoice saved but file upload failed");
+          }
+          setUploadProgress(false);
+        }
+
         alert("Invoice updated successfully");
       } else {
-        await api.post("/api/invoices", invoiceData);
+        const response = await api.post("/api/invoices", invoiceData);
+        const createdInvoiceId = response.data._id;
+
+        // ✅ FEATURE #36: Upload files if creating
+        if (selectedFiles.length > 0) {
+          setUploadProgress(true);
+          const formData = new FormData();
+          selectedFiles.forEach((file) => {
+            formData.append("files", file);
+          });
+
+          try {
+            await api.post(
+              `/api/invoices/${createdInvoiceId}/attachments`,
+              formData,
+              {
+                headers: { "Content-Type": "multipart/form-data" },
+              }
+            );
+          } catch (uploadError) {
+            console.error("Upload error:", uploadError);
+            alert("Invoice created but file upload failed");
+          }
+          setUploadProgress(false);
+        }
+
         alert(
           isDuplicate
             ? "Duplicate invoice created successfully"
@@ -695,6 +758,35 @@ export default function AddEditInvoice() {
   };
 
   const totals = calculateTotals();
+
+  // ✅ FEATURE #36: File Upload Handlers
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = files.filter((file) => {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`File ${file.name} is too large (max 10MB)`);
+        return false;
+      }
+      return true;
+    });
+
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+  };
+
+  const handleRemoveFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const getInvoiceTypeName = (type) => {
+  const types = {
+    'TAX_INVOICE': 'Tax Invoice',
+    'PROFORMA': 'Pro-Forma Invoice',
+    'CREDIT_NOTE': 'Credit Note',
+    'DEBIT_NOTE': 'Debit Note',
+    'DELIVERY_CHALLAN': 'Delivery Challan',
+  };
+  return types[type] || type;
+};
 
   return (
     <Layout>
@@ -751,23 +843,42 @@ export default function AddEditInvoice() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Invoice Type
-                </label>
-                <select
-                  value={formData.invoiceType}
-                  onChange={(e) =>
-                    setFormData({ ...formData, invoiceType: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="PROFORMA">Proforma Invoice</option>
-                  <option value="TAX_INVOICE">Tax Invoice</option>
-                  <option value="CREDIT_NOTE">Credit Note</option>
-                  <option value="DEBIT_NOTE">Debit Note</option>
-                </select>
-              </div>
+              {/* ✅ FEATURE #29: Hide invoice type dropdown when coming from Sales menu */}
+              {!propInvoiceType && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Type
+                  </label>
+                  <select
+                    value={formData.invoiceType}
+                    onChange={(e) =>
+                      setFormData({ ...formData, invoiceType: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="PROFORMA">Proforma Invoice</option>
+                    <option value="TAX_INVOICE">Tax Invoice</option>
+                    <option value="CREDIT_NOTE">Credit Note</option>
+                    <option value="DEBIT_NOTE">Debit Note</option>
+                    <option value="DELIVERY_CHALLAN">Delivery Challan</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Show invoice type as read-only when coming from specific route */}
+              {propInvoiceType && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Type
+                  </label>
+                  <input
+                    type="text"
+                    value={getInvoiceTypeName(formData.invoiceType)}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-blue-50 text-blue-900 font-medium"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1083,7 +1194,7 @@ export default function AddEditInvoice() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <label className="block text-xs font-medium text-blue-900 mb-2">
                       <Package className="w-4 h-4 inline mr-1" />
-                      Select from Product Catalog (or choose Custom Item)
+                      Select from Item Catalog (or choose Custom Item)
                     </label>
                     <select
                       value={item.productId}
@@ -1092,7 +1203,7 @@ export default function AddEditInvoice() {
                       }
                       className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     >
-                      <option value="">-- Select Product/Service --</option>
+                      <option value="">-- Select Item --</option>
                       <option value="custom">
                         ✏️ Custom Item (Manual Entry)
                       </option>
@@ -1120,181 +1231,203 @@ export default function AddEditInvoice() {
                   </div>
 
                   <div className="space-y-4">
-  {/* Row 1: Description & Type */}
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Description *
-      </label>
-      <input
-        type="text"
-        required
-        placeholder="Item description"
-        value={item.description}
-        onChange={(e) =>
-          handleItemChange(index, "description", e.target.value)
-        }
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
+                    {/* Row 1: Description & Type */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Description *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Item description"
+                          value={item.description}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "description",
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Type *
-      </label>
-      <select
-        required
-        value={item.itemType}
-        onChange={(e) =>
-          handleItemChange(index, "itemType", e.target.value)
-        }
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-      >
-        <option value="PRODUCT">Product</option>
-        <option value="SERVICE">Service</option>
-      </select>
-    </div>
-  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Type *
+                        </label>
+                        <select
+                          required
+                          value={item.itemType}
+                          onChange={(e) =>
+                            handleItemChange(index, "itemType", e.target.value)
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="PRODUCT">Product</option>
+                          <option value="SERVICE">Service</option>
+                        </select>
+                      </div>
+                    </div>
 
-  {/* Row 2: HSN/SAC (Full Width, Prominent) */}
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-2">
-      HSN/SAC Code *
-    </label>
-    
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4 space-y-3">
-      {/* Enhanced HSN Search Component */}
-      <HSNSearch
-        value={item.hsnSacCode}
-        onChange={(code) =>
-          handleItemChange(index, "hsnSacCode", code)
-        }
-        itemType={item.itemType}
-        onSelect={(hsn) => {
-          handleItemChange(index, "hsnSacCode", hsn.code);
-          if (hsn.defaultGstRate) {
-            handleItemChange(index, "gstRate", hsn.defaultGstRate);
-          }
-          try {
-            api.post(`/api/hsn/${hsn.code}/increment-usage`);
-          } catch (error) {
-            console.log("Usage tracking failed");
-          }
-        }}
-        required={true}
-        placeholder={
-          organization?.annualTurnover <= 50000000
-            ? "Search or enter HSN/SAC (4 digits)"
-            : "Search or enter HSN/SAC (6+ digits)"
-        }
-      />
+                    {/* Row 2: HSN/SAC (Full Width, Prominent) */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        HSN/SAC Code *
+                      </label>
 
-      {/* Validation Hint */}
-      <div className="flex items-start gap-2 text-xs">
-        <div className="flex-shrink-0 w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
-          ℹ
-        </div>
-        <div className="text-blue-700">
-          {organization?.annualTurnover <= 50000000 ? (
-            <p>
-              <strong>4 digits required</strong> (Turnover ≤ ₹5 crore)
-              <br />
-              Example: 8471, 9983
-            </p>
-          ) : (
-            <p>
-              <strong>6+ digits required</strong> (Turnover &gt; ₹5 crore)
-              <br />
-              Example: 847130, 998314
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4 space-y-3">
+                        {/* Enhanced HSN Search Component */}
+                        <HSNSearch
+                          value={item.hsnSacCode}
+                          onChange={(code) =>
+                            handleItemChange(index, "hsnSacCode", code)
+                          }
+                          itemType={item.itemType}
+                          onSelect={(hsn) => {
+                            handleItemChange(index, "hsnSacCode", hsn.code);
+                            if (hsn.defaultGstRate) {
+                              handleItemChange(
+                                index,
+                                "gstRate",
+                                hsn.defaultGstRate
+                              );
+                            }
+                            try {
+                              api.post(`/api/hsn/${hsn.code}/increment-usage`);
+                            } catch (error) {
+                              console.log("Usage tracking failed");
+                            }
+                          }}
+                          required={true}
+                          placeholder={
+                            organization?.annualTurnover <= 50000000
+                              ? "Search or enter HSN/SAC (4 digits)"
+                              : "Search or enter HSN/SAC (6+ digits)"
+                          }
+                        />
 
-  {/* Row 3: Quantity, Unit, Rate, GST */}
-  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Quantity *
-      </label>
-      <input
-        type="number"
-        required
-        min="0"
-        step="0.01"
-        value={item.quantity}
-        onChange={(e) =>
-          handleItemChange(index, "quantity", parseFloat(e.target.value) || 0)
-        }
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
+                        {/* Validation Hint */}
+                        <div className="flex items-start gap-2 text-xs">
+                          <div className="flex-shrink-0 w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+                            ℹ
+                          </div>
+                          <div className="text-blue-700">
+                            {organization?.annualTurnover <= 50000000 ? (
+                              <p>
+                                <strong>4 digits required</strong> (Turnover ≤
+                                ₹5 crore)
+                                <br />
+                                Example: 8471, 9983
+                              </p>
+                            ) : (
+                              <p>
+                                <strong>6+ digits required</strong> (Turnover
+                                &gt; ₹5 crore)
+                                <br />
+                                Example: 847130, 998314
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Unit *
-      </label>
-      <select
-        required
-        value={item.unit}
-        onChange={(e) =>
-          handleItemChange(index, "unit", e.target.value)
-        }
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-      >
-        <option value="PCS">Pcs</option>
-        <option value="KG">Kg</option>
-        <option value="LITER">Liter</option>
-        <option value="METER">Meter</option>
-        <option value="BOX">Box</option>
-        <option value="HOUR">Hour</option>
-        <option value="DAY">Day</option>
-        <option value="MONTH">Month</option>
-        <option value="SET">Set</option>
-        <option value="UNIT">Unit</option>
-      </select>
-    </div>
+                    {/* Row 3: Quantity, Unit, Rate, GST */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Quantity *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.01"
+                          value={item.quantity}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "quantity",
+                              parseFloat(e.target.value) || 0
+                            )
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Rate *
-      </label>
-      <input
-        type="number"
-        required
-        min="0"
-        step="0.01"
-        value={item.rate}
-        onChange={(e) =>
-          handleItemChange(index, "rate", parseFloat(e.target.value) || 0)
-        }
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Unit *
+                        </label>
+                        <select
+                          required
+                          value={item.unit}
+                          onChange={(e) =>
+                            handleItemChange(index, "unit", e.target.value)
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="PCS">Pcs</option>
+                          <option value="KG">Kg</option>
+                          <option value="LITER">Liter</option>
+                          <option value="METER">Meter</option>
+                          <option value="BOX">Box</option>
+                          <option value="HOUR">Hour</option>
+                          <option value="DAY">Day</option>
+                          <option value="MONTH">Month</option>
+                          <option value="SET">Set</option>
+                          <option value="UNIT">Unit</option>
+                        </select>
+                      </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        GST % *
-      </label>
-      <select
-        required
-        value={item.gstRate}
-        onChange={(e) =>
-          handleItemChange(index, "gstRate", parseFloat(e.target.value))
-        }
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-      >
-        <option value="0">0%</option>
-        <option value="5">5%</option>
-        <option value="12">12%</option>
-        <option value="18">18%</option>
-        <option value="28">28%</option>
-      </select>
-    </div>
-  </div>
-</div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Rate *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.01"
+                          value={item.rate}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "rate",
+                              parseFloat(e.target.value) || 0
+                            )
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          GST % *
+                        </label>
+                        <select
+                          required
+                          value={item.gstRate}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "gstRate",
+                              parseFloat(e.target.value)
+                            )
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="0">0%</option>
+                          <option value="5">5%</option>
+                          <option value="12">12%</option>
+                          <option value="18">18%</option>
+                          <option value="28">28%</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Item-level Discount & GST */}
                   <div className="grid grid-cols-1 md:grid-cols-7 gap-3 pt-2 border-t border-gray-200">
@@ -1490,6 +1623,100 @@ export default function AddEditInvoice() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Payment terms, bank details, or any additional notes..."
               />
+            </div>
+          </div>
+
+          {/* ✅ FEATURE #36: Attachments Upload Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <Paperclip className="w-5 h-5 inline mr-2" />
+              Attachments (Optional)
+            </h2>
+
+            <div className="space-y-4">
+              {/* File Upload Area */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                <input
+                  type="file"
+                  id="file-upload"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.zip"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="file-upload"
+                  className="cursor-pointer flex flex-col items-center gap-2"
+                >
+                  <Upload className="w-8 h-8 text-gray-400" />
+                  <p className="text-sm font-medium text-gray-700">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    PDF, Images, Documents (max 10MB each)
+                  </p>
+                </label>
+              </div>
+
+              {/* Selected Files List */}
+              {selectedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">
+                    Selected Files ({selectedFiles.length})
+                  </p>
+                  {selectedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <Paperclip className="w-4 h-4 text-gray-400" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(index)}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Existing Attachments (when editing) */}
+              {isEditing && invoice?.attachments?.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">
+                    Existing Attachments ({invoice.attachments.length})
+                  </p>
+                  {invoice.attachments.map((attachment) => (
+                    <div
+                      key={attachment._id}
+                      className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200"
+                    >
+                      <Paperclip className="w-4 h-4 text-blue-600" />
+                      <p className="text-sm font-medium text-blue-900 flex-1">
+                        {attachment.originalName}
+                      </p>
+                      <p className="text-xs text-blue-600">
+                        {(attachment.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                  ))}
+                  <p className="text-xs text-gray-500 italic">
+                    View and manage attachments in invoice detail page
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

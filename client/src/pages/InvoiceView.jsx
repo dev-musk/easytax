@@ -6,6 +6,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import InvoiceTemplateSettings, {
+  THEME_COLORS,
+} from "../components/InvoiceTemplateSettings";
 import api from "../utils/api";
 import { useAuthStore } from "../store/authStore";
 import QRCode from "qrcode";
@@ -23,6 +26,10 @@ import {
   Trash2,
   StickyNote,
   FileCheck,
+  Link2,
+  Paperclip,
+  Eye,
+  Palette,
 } from "lucide-react";
 
 export default function InvoiceView() {
@@ -49,6 +56,19 @@ export default function InvoiceView() {
     filingPeriod: "",
   });
 
+  // ✅ FEATURE #34: Share Link State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareData, setShareData] = useState(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [showTemplateSettings, setShowTemplateSettings] = useState(false);
+  const [templateSettings, setTemplateSettings] = useState({
+    fontFamily: "Roboto",
+    headerStyle: "BOXED",
+    borderStyle: "PARTIAL",
+    themeColor: "BLUE",
+    textAlignment: "LEFT",
+  });
+
   useEffect(() => {
     fetchInvoiceDetails();
     fetchOrganization();
@@ -67,6 +87,10 @@ export default function InvoiceView() {
     try {
       const response = await api.get(`/api/invoices/${id}`);
       setInvoice(response.data);
+
+      if (response.data.templateSettings) {
+        setTemplateSettings(response.data.templateSettings);
+      }
 
       // Set filing status in form
       if (response.data.gstFilingStatus) {
@@ -113,6 +137,42 @@ export default function InvoiceView() {
     }
   };
 
+  const handleSaveTemplateSettings = async (newSettings) => {
+    try {
+      await api.patch(`/api/invoices/${id}/template-settings`, newSettings);
+      setTemplateSettings(newSettings);
+      alert("Design customization saved successfully!");
+      fetchInvoiceDetails(); // Refresh to see changes
+    } catch (error) {
+      console.error("Error saving template settings:", error);
+      alert("Failed to save design settings");
+    }
+  };
+
+  // ✅ FEATURE #20: Get dynamic styles based on template settings
+  const getInvoiceStyles = () => {
+    const themeColor =
+      THEME_COLORS[templateSettings.themeColor] || THEME_COLORS.BLUE;
+
+    return {
+      fontFamily: templateSettings.fontFamily,
+      themeColor: themeColor,
+      headerClass:
+        templateSettings.headerStyle === "BOXED"
+          ? `${themeColor.light} border-2 ${themeColor.border} rounded-lg p-6`
+          : "pb-6",
+      borderClass:
+        templateSettings.borderStyle === "FULL"
+          ? "border-2 border-gray-300"
+          : templateSettings.borderStyle === "PARTIAL"
+          ? "border-t-2 border-b-2 border-gray-300"
+          : "",
+      textAlign: templateSettings.textAlignment.toLowerCase(),
+    };
+  };
+
+  const styles = getInvoiceStyles();
+
   // ✅ FEATURE #41: Update GST Filing Status
   const handleUpdateFilingStatus = async () => {
     try {
@@ -145,6 +205,28 @@ export default function InvoiceView() {
     } catch (error) {
       console.error("Error generating UPI QR:", error);
       alert(error.response?.data?.error || "Failed to generate UPI QR code");
+    }
+  };
+
+  const handleSendReminder = async () => {
+    if (!window.confirm(`Send payment reminder to ${invoice.client.email}?`)) {
+      return;
+    }
+
+    try {
+      const response = await api.post(
+        `/api/reminders/invoices/${id}/send-reminder`
+      );
+      alert("Payment reminder sent successfully to " + response.data.sentTo);
+
+      // Refresh invoice to show updated reminder history
+      fetchInvoiceDetails();
+    } catch (error) {
+      console.error("Send reminder error:", error);
+      alert(
+        "Failed to send reminder: " +
+          (error.response?.data?.error || error.message)
+      );
     }
   };
 
@@ -193,6 +275,82 @@ export default function InvoiceView() {
     } catch (error) {
       console.error("Error deleting invoice:", error);
       alert("Failed to delete invoice");
+    }
+  };
+
+  // ✅ FEATURE #34: Generate Share Link
+  const handleGenerateShareLink = async (expiresIn) => {
+    try {
+      const response = await api.post(`/api/invoices/${id}/share`, {
+        expiresIn: expiresIn || null,
+      });
+
+      // Use the shareUrl from backend response (which now has correct frontend URL)
+      setShareData({
+        ...response.data,
+      });
+      alert("Share link generated successfully!");
+      fetchInvoiceDetails();
+    } catch (error) {
+      console.error("Share error:", error);
+      alert("Failed to generate share link");
+    }
+  };
+
+  // ✅ FEATURE #34: Disable Share Link
+  const handleDisableShareLink = async () => {
+    if (
+      !confirm(
+        "Disable this share link? Anyone with the link will no longer be able to access this invoice."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/invoices/${id}/share`);
+      setShareData(null);
+      alert("Share link disabled successfully");
+      fetchInvoiceDetails(); // Refresh
+    } catch (error) {
+      console.error("Disable error:", error);
+      alert("Failed to disable link");
+    }
+  };
+
+  // ✅ FEATURE #36: Download Attachment
+  const handleDownloadAttachment = async (attachmentId, filename) => {
+    try {
+      const response = await api.get(
+        `/api/invoices/${id}/attachments/${attachmentId}/download`,
+        { responseType: "blob" }
+      );
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download file");
+    }
+  };
+
+  // ✅ FEATURE #36: Delete Attachment
+  const handleDeleteAttachment = async (attachmentId) => {
+    if (!confirm("Delete this attachment?")) return;
+
+    try {
+      await api.delete(`/api/invoices/${id}/attachments/${attachmentId}`);
+      fetchInvoiceDetails(); // Refresh
+      alert("Attachment deleted successfully");
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("Failed to delete attachment");
     }
   };
 
@@ -254,68 +412,119 @@ export default function InvoiceView() {
     <Layout>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* ✅ FEATURE #37: ALL Action Buttons in Detail View */}
-        <div className="flex items-center justify-between print:hidden">
-          <button
-            onClick={() => navigate("/invoices")}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Invoices
-          </button>
+        <div className="print:hidden space-y-4">
+          {/* Back Button - Separate Row */}
+          <div>
+            <button
+              onClick={() => navigate("/invoices")}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">Back to Invoices</span>
+            </button>
+          </div>
 
-          <div className="flex items-center gap-3">
-            {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
-              <>
+          {/* Action Buttons - Responsive Grid */}
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
+              Quick Actions
+            </p>
+
+            {/* Primary Actions Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-3">
+              {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
+                <>
+                  <button
+                    onClick={() => setShowPaymentModal(true)}
+                    className="flex flex-col items-center gap-2 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-all hover:shadow-lg text-sm font-medium"
+                  >
+                    <CreditCard className="w-5 h-5" />
+                    <span className="text-xs">Record Payment</span>
+                  </button>
+
+                  <button
+                    onClick={generateUpiQr}
+                    className="flex flex-col items-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition-all hover:shadow-lg text-sm font-medium"
+                  >
+                    <QrCode className="w-5 h-5" />
+                    <span className="text-xs">UPI QR</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowShareModal(true);
+                      if (invoice.shareEnabled && invoice.shareToken) {
+                        setShareData({
+                          shareUrl: `${window.location.origin}/public/invoice/${invoice.shareToken}`,
+                          shareToken: invoice.shareToken,
+                          shareEnabled: invoice.shareEnabled,
+                          shareExpiresAt: invoice.shareExpiresAt,
+                        });
+                      }
+                    }}
+                    className="flex flex-col items-center gap-2 bg-indigo-600 text-white px-4 py-3 rounded-lg hover:bg-indigo-700 transition-all hover:shadow-lg text-sm font-medium"
+                  >
+                    <Link2 className="w-5 h-5" />
+                    <span className="text-xs">Share Link</span>
+                  </button>
+                </>
+              )}
+
+              {invoice.status !== "PAID" && invoice.client?.email && (
                 <button
-                  onClick={() => setShowPaymentModal(true)}
-                  className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                  onClick={handleSendReminder}
+                  className="flex flex-col items-center gap-2 bg-orange-600 text-white px-4 py-3 rounded-lg hover:bg-orange-700 transition-all hover:shadow-lg text-sm font-medium"
                 >
-                  <CreditCard className="w-4 h-4" />
-                  Record Payment
+                  <Mail className="w-5 h-5" />
+                  <span className="text-xs">Send Reminder</span>
                 </button>
-                <button
-                  onClick={generateUpiQr}
-                  className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  <QrCode className="w-4 h-4" />
-                  UPI QR
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={handleDownloadPDF}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Download
-            </button>
-
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <Printer className="w-4 h-4" />
-              Print
-            </button>
-
-            <button
-              onClick={handleDuplicate}
-              className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              Duplicate
-            </button>
-
-            {invoice.status !== "PAID" && (
+              )}
+              {/* ← ADD THIS BUTTON */}
               <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                onClick={() => setShowTemplateSettings(true)}
+                className="flex flex-col items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-pink-700 hover:to-purple-700 transition-all hover:shadow-lg text-sm font-medium"
               >
-                <Trash2 className="w-4 h-4" />
-                Delete
+                <Palette className="w-5 h-5" />
+                <span className="text-xs">Customize Design</span>
               </button>
-            )}
+
+              <button
+                onClick={handleDownloadPDF}
+                className="flex flex-col items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-all hover:shadow-lg text-sm font-medium"
+              >
+                <Download className="w-5 h-5" />
+                <span className="text-xs">Download PDF</span>
+              </button>
+            </div>
+
+            {/* Secondary Actions Row */}
+            <div className="grid grid-cols-3 md:grid-cols-4 gap-2 pt-3 border-t border-gray-200">
+              <button
+                onClick={handlePrint}
+                className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span className="hidden sm:inline">Print</span>
+              </button>
+
+              <button
+                onClick={handleDuplicate}
+                className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              >
+                <Copy className="w-4 h-4" />
+                <span className="hidden sm:inline">Duplicate</span>
+              </button>
+
+              {invoice.status !== "PAID" && (
+                <button
+                  onClick={handleDelete}
+                  className="flex items-center justify-center gap-2 bg-white border border-red-300 text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -466,10 +675,75 @@ export default function InvoiceView() {
           </div>
         </div>
 
+        {/* ✅ FEATURE #36: Attachments Section */}
+        <div className="bg-white rounded-lg shadow-sm border p-4 print:hidden">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Paperclip className="w-5 h-5 text-gray-600" />
+              Attachments ({invoice.attachments?.length || 0})
+            </h3>
+          </div>
+
+          <div className="space-y-2">
+            {invoice.attachments?.length > 0 ? (
+              invoice.attachments.map((attachment) => (
+                <div
+                  key={attachment._id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Paperclip className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {attachment.originalName}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {(attachment.size / 1024).toFixed(1)} KB •
+                        {new Date(attachment.uploadedAt).toLocaleDateString(
+                          "en-IN"
+                        )}
+                        {attachment.uploadedBy?.name &&
+                          ` • ${attachment.uploadedBy.name}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        handleDownloadAttachment(
+                          attachment._id,
+                          attachment.originalName
+                        )
+                      }
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Download"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteAttachment(attachment._id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500 italic">No attachments</p>
+            )}
+          </div>
+        </div>
         {/* Invoice Document (same as before) */}
-        <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-8 print:shadow-none print:border-0">
+        <div
+          className={`bg-white rounded-lg shadow-lg p-8 print:shadow-none print:border-0 ${styles.borderClass}`}
+          style={{ fontFamily: styles.fontFamily }}
+        >
           {/* Invoice Header */}
-          <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-blue-500">
+         <div className={`flex justify-between items-start mb-8 ${styles.headerClass}`}>
+
             <div className="flex-1">
               {organization?.logo &&
                 organization?.displaySettings?.showCompanyLogo !== false && (
@@ -484,7 +758,7 @@ export default function InvoiceView() {
                   </div>
                 )}
 
-              <h1 className="text-2xl font-bold text-blue-600 mb-2">
+              <h1 className={`text-2xl font-bold ${styles.themeColor.text} mb-2`}>
                 {organization?.name || "Company Name"}
               </h1>
               {organization?.address && (
@@ -800,7 +1074,7 @@ export default function InvoiceView() {
                 </div>
               )}
 
-              <div className="flex justify-between py-3 border-t-2 border-gray-300 bg-blue-600 text-white px-4 rounded-lg">
+            <div className={`flex justify-between py-3 border-t-2 border-gray-300 ${styles.themeColor.primary} text-white px-4 rounded-lg`}>
                 <span className="text-base font-bold">Total Amount</span>
                 <span className="text-base font-bold">
                   ₹{invoice.totalAmount?.toLocaleString("en-IN")}
@@ -831,7 +1105,7 @@ export default function InvoiceView() {
           {/* Amount in Words */}
           {organization?.displaySettings?.amountInWords !== false &&
             invoice.amountInWords && (
-              <div className="mb-8 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+              <div className={`mb-8 ${styles.themeColor.light} border-l-4 ${styles.themeColor.border} p-4 rounded`}>
                 <p className="text-xs text-gray-500 uppercase mb-1">
                   Amount in Words
                 </p>
@@ -1117,6 +1391,134 @@ export default function InvoiceView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ✅ FEATURE #34: Share Link Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Link2 className="w-5 h-5" />
+                  Share Invoice Link
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowShareModal(false);
+                    setCopySuccess(false);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {shareData && shareData.shareEnabled ? (
+                <>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p className="text-sm font-medium text-green-900 mb-2">
+                      ✅ Share link is active!
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={shareData.shareUrl}
+                        readOnly
+                        className="flex-1 px-3 py-2 bg-white border rounded text-sm"
+                      />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(shareData.shareUrl);
+                          setCopySuccess(true);
+                          setTimeout(() => setCopySuccess(false), 2000);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        {copySuccess ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                    {shareData.shareExpiresAt && (
+                      <p className="text-xs text-gray-600 mt-2">
+                        Expires:{" "}
+                        {new Date(shareData.shareExpiresAt).toLocaleDateString(
+                          "en-IN"
+                        )}
+                      </p>
+                    )}
+                  </div>
+
+                  {invoice.shareViews > 0 && (
+                    <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+                      <p className="font-medium text-blue-900">
+                        Link Statistics
+                      </p>
+                      <p className="text-xs mt-1">
+                        Viewed {invoice.shareViews} time
+                        {invoice.shareViews !== 1 ? "s" : ""}
+                        {invoice.lastViewedAt &&
+                          ` • Last viewed: ${new Date(
+                            invoice.lastViewedAt
+                          ).toLocaleDateString("en-IN")}`}
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleDisableShareLink}
+                    className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Disable Link
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600">
+                    Generate a shareable link that allows anyone to view this
+                    invoice without logging in.
+                  </p>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Link Expiry
+                    </label>
+                    <select
+                      id="expirySelect"
+                      className="w-full px-3 py-2 border rounded-lg"
+                      defaultValue="7"
+                    >
+                      <option value="7">7 Days</option>
+                      <option value="30">30 Days</option>
+                      <option value="">Never Expires</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const expiresIn =
+                        document.getElementById("expirySelect").value;
+                      handleGenerateShareLink(expiresIn);
+                    }}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Generate Share Link
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ← ADD THIS MODAL */}
+      {/* ✅ FEATURE #20: Template Settings Modal */}
+      {showTemplateSettings && (
+        <InvoiceTemplateSettings
+          initialSettings={templateSettings}
+          onSave={handleSaveTemplateSettings}
+          onClose={() => setShowTemplateSettings(false)}
+        />
       )}
     </Layout>
   );

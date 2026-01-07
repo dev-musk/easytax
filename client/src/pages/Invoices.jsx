@@ -1,32 +1,37 @@
 // ============================================
 // FILE: client/src/pages/Invoices.jsx
-// ✅ FIXED: Added Clear Search Button (Feature #38)
+// ✅ FEATURE #29 & #37: FIXED - Correct routing for create button
 // ============================================
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import {
   Plus,
   Eye,
-  Copy,
-  Download,
-  Mail,
-  Trash2,
   Search,
   Filter,
   ChevronDown,
   FileText,
-  X, // ✅ ADDED: Import X icon for clear button
+  X,
 } from 'lucide-react';
 
-export default function Invoices() {
+export default function Invoices({ type }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const status = params.get('status');
+    if (status) {
+      setFilterStatus(status);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     fetchInvoices();
@@ -37,6 +42,7 @@ export default function Invoices() {
       const params = {};
       if (filterStatus !== 'ALL') params.status = filterStatus;
       if (searchTerm) params.search = searchTerm;
+      if (type) params.invoiceType = type;
 
       const response = await api.get('/api/invoices', { params });
       setInvoices(response.data || []);
@@ -47,47 +53,15 @@ export default function Invoices() {
     }
   };
 
+  // ✅ FIX: Use helper function for routing
   const handleCreateInvoice = () => {
-    navigate('/invoices/add');
+    navigate(getAddInvoiceRoute());
   };
 
   const handleViewInvoice = (invoiceId) => {
     navigate(`/invoices/view/${invoiceId}`);
   };
 
-  const handleDeleteInvoice = async (invoiceId) => {
-    if (!confirm('Are you sure you want to delete this invoice?')) return;
-
-    try {
-      await api.delete(`/api/invoices/${invoiceId}`);
-      setInvoices(invoices.filter((inv) => inv._id !== invoiceId));
-      alert('Invoice deleted successfully');
-    } catch (error) {
-      console.error('Error deleting invoice:', error);
-      alert('Failed to delete invoice');
-    }
-  };
-
-  const handleDuplicateInvoice = async (invoiceId) => {
-    if (!confirm('Create a duplicate of this invoice?')) return;
-
-    try {
-      const response = await api.get(`/api/invoices/${invoiceId}`);
-      const invoice = response.data;
-
-      navigate('/invoices/add', {
-        state: {
-          duplicateFrom: invoice,
-          isDuplicate: true,
-        },
-      });
-    } catch (error) {
-      console.error('Error duplicating invoice:', error);
-      alert('Failed to duplicate invoice');
-    }
-  };
-
-  // ✅ ADDED: Clear search function
   const handleClearSearch = () => {
     setSearchTerm('');
   };
@@ -105,12 +79,39 @@ export default function Invoices() {
     CANCELLED: 'bg-gray-100 text-gray-500',
   };
 
+  const getPageTitle = () => {
+    if (type === 'TAX_INVOICE') return 'Tax Invoices';
+    if (type === 'PROFORMA') return 'Pro-Forma Invoices';
+    if (type === 'DELIVERY_CHALLAN') return 'Delivery Challans';
+    if (type === 'CREDIT_NOTE') return 'Credit Notes';
+    if (type === 'DEBIT_NOTE') return 'Debit Notes';
+    return 'All Invoices';
+  };
+
+  const getAddInvoiceRoute = () => {
+    if (type === 'TAX_INVOICE') return '/sales/tax-invoice/add';
+    if (type === 'PROFORMA') return '/sales/proforma/add';
+    if (type === 'DELIVERY_CHALLAN') return '/sales/delivery-challan/add';
+    if (type === 'CREDIT_NOTE') return '/sales/credit-note/add';
+    if (type === 'DEBIT_NOTE') return '/sales/debit-note/add';
+    return '/invoices/add';
+  };
+
+  const getButtonText = () => {
+    if (type === 'TAX_INVOICE') return 'New Tax Invoice';
+    if (type === 'PROFORMA') return 'New Pro-Forma Invoice';
+    if (type === 'DELIVERY_CHALLAN') return 'New Delivery Challan';
+    if (type === 'CREDIT_NOTE') return 'New Credit Note';
+    if (type === 'DEBIT_NOTE') return 'New Debit Note';
+    return 'Create Invoice';
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{getPageTitle()}</h1>
             <p className="text-gray-600 text-sm mt-1">Manage and track all your invoices</p>
           </div>
           <button
@@ -118,13 +119,12 @@ export default function Invoices() {
             className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
-            Create Invoice
+            {getButtonText()}
           </button>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ✅ FIXED: Search input with clear button */}
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
@@ -134,7 +134,6 @@ export default function Invoices() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              {/* ✅ ADDED: Clear search button - only shows when searchTerm has value */}
               {searchTerm && (
                 <button
                   onClick={handleClearSearch}
@@ -202,8 +201,6 @@ export default function Invoices() {
                 invoice={invoice}
                 statusColors={statusColors}
                 onView={handleViewInvoice}
-                onDelete={handleDeleteInvoice}
-                onDuplicate={handleDuplicateInvoice}
               />
             ))}
           </div>
@@ -213,80 +210,10 @@ export default function Invoices() {
   );
 }
 
-function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
-  const [downloading, setDownloading] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const handleDownloadPDF = async (e) => {
-    e.stopPropagation();
-    setDownloading(true);
-    try {
-      const response = await api.get(`/api/invoices/${invoice._id}/pdf`, {
-        responseType: 'blob',
-      });
-
-      const blob = new Blob([response.data], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
-      const printWindow = window.open(url, '_blank');
-
-      if (printWindow) {
-        printWindow.onload = function () {
-          setTimeout(() => {
-            printWindow.print();
-          }, 250);
-        };
-      }
-
-      setTimeout(() => window.URL.revokeObjectURL(url), 100);
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      alert('Failed to download PDF. Please try again.');
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const handleSendEmail = async (e) => {
-    e.stopPropagation();
-    const recipientEmail = prompt('Enter recipient email address:', invoice.client?.email || '');
-
-    if (!recipientEmail) return;
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
-      alert('Please enter a valid email address');
-      return;
-    }
-
-    setSending(true);
-    try {
-      await api.post(`/api/invoices/${invoice._id}/send-email`, {
-        to: recipientEmail,
-        subject: `Invoice ${invoice.invoiceNumber}`,
-        message: 'Please find attached invoice for your reference.',
-      });
-
-      alert(`Invoice sent successfully to ${recipientEmail}!`);
-    } catch (error) {
-      console.error('Error sending email:', error);
-      alert('Failed to send email. Please try again.');
-    } finally {
-      setSending(false);
-    }
-  };
-
+function InvoiceCard({ invoice, statusColors, onView }) {
   const handleView = (e) => {
     e.stopPropagation();
     onView(invoice._id);
-  };
-
-  const handleDuplicate = (e) => {
-    e.stopPropagation();
-    onDuplicate(invoice._id);
-  };
-
-  const handleDelete = (e) => {
-    e.stopPropagation();
-    onDelete(invoice._id);
   };
 
   return (
@@ -340,52 +267,11 @@ function InvoiceCard({ invoice, statusColors, onView, onDelete, onDuplicate }) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleView}
-            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="View invoice"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+            title="View invoice details"
           >
             <Eye className="w-4 h-4" />
-          </button>
-          
-          <button
-            onClick={handleDuplicate}
-            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-            title="Duplicate invoice"
-          >
-            <Copy className="w-4 h-4" />
-          </button>
-          
-          <button
-            onClick={handleDownloadPDF}
-            disabled={downloading}
-            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-            title={downloading ? 'Generating PDF...' : 'Download PDF'}
-          >
-            {downloading ? (
-              <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <Download className="w-4 h-4" />
-            )}
-          </button>
-          
-          <button
-            onClick={handleSendEmail}
-            disabled={sending}
-            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
-            title={sending ? 'Sending...' : 'Send email'}
-          >
-            {sending ? (
-              <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <Mail className="w-4 h-4" />
-            )}
-          </button>
-          
-          <button
-            onClick={handleDelete}
-            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Delete invoice"
-          >
-            <Trash2 className="w-4 h-4" />
+            View Details
           </button>
         </div>
       </div>

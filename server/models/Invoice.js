@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/models/Invoice.js
-// ENHANCED WITH ALL SIMPLE FEATURES
+// ✅ FEATURES #20, #34, #36, #41: Enhanced Invoice Model with Template Customization
 // ============================================
 
 import mongoose from "mongoose";
@@ -126,7 +126,7 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
 
-    // ✅ FEATURE #7: Additional Fields
+    // Additional Fields
     poNumber: {
       type: String,
       trim: true,
@@ -195,7 +195,7 @@ const invoiceSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // ✅ FEATURE #8: TCS Provision
+    // TCS Provision
     tcsApplicable: {
       type: Boolean,
       default: false,
@@ -209,7 +209,7 @@ const invoiceSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // ✅ FEATURE #2: Reverse Charge
+    // Reverse Charge
     reverseCharge: {
       type: Boolean,
       default: false,
@@ -257,7 +257,7 @@ const invoiceSchema = new mongoose.Schema(
     notes: String,
     termsConditions: String,
 
-    // ✅ FEATURE #32: Quick Notes
+    // Quick Notes
     quickNotes: [{
       note: {
         type: String,
@@ -273,7 +273,7 @@ const invoiceSchema = new mongoose.Schema(
       },
     }],
 
-    // GST Calculation Metadata (for FEATURE #11)
+    // GST Calculation Metadata
     gstCalculationMeta: {
       clientStateCode: String,
       orgStateCode: String,
@@ -308,6 +308,10 @@ const invoiceSchema = new mongoose.Schema(
         uploadedAt: {
           type: Date,
           default: Date.now,
+        },
+        uploadedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
         },
         description: String,
       },
@@ -363,14 +367,62 @@ const invoiceSchema = new mongoose.Schema(
         default: false,
       },
       gstr3bFiledDate: Date,
-      filingPeriod: String, // e.g., "Jan 2026"
+      filingPeriod: String,
     },
+
+    // ✅ FEATURE #34: Shareable Link
+    shareToken: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    shareEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    shareExpiresAt: {
+      type: Date,
+    },
+    shareViews: {
+      type: Number,
+      default: 0,
+    },
+    lastViewedAt: Date,
 
     // Template
     template: {
       type: String,
       enum: ["MODERN", "CLASSIC", "MINIMAL", "PROFESSIONAL"],
       default: "MODERN",
+    },
+
+    // ✅ FEATURE #20: Invoice Design Customization
+    templateSettings: {
+      fontFamily: {
+        type: String,
+        enum: ["Roboto", "Arial", "Times New Roman", "Inter", "Georgia"],
+        default: "Roboto",
+      },
+      headerStyle: {
+        type: String,
+        enum: ["BOXED", "PLAIN"],
+        default: "BOXED",
+      },
+      borderStyle: {
+        type: String,
+        enum: ["FULL", "PARTIAL", "NONE"],
+        default: "PARTIAL",
+      },
+      themeColor: {
+        type: String,
+        enum: ["BLUE", "PURPLE", "GREEN", "ORANGE", "RED", "INDIGO"],
+        default: "BLUE",
+      },
+      textAlignment: {
+        type: String,
+        enum: ["LEFT", "CENTER", "RIGHT"],
+        default: "LEFT",
+      },
     },
 
     // Recurring invoice
@@ -418,6 +470,14 @@ const invoiceSchema = new mongoose.Schema(
       ref: "Organization",
       required: true,
     },
+    remindersSent: [
+      {
+        sentAt: { type: Date, default: Date.now },
+        sentTo: String,
+        type: { type: String, enum: ['MANUAL', 'AUTO'], default: 'AUTO' },
+        sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -430,6 +490,7 @@ invoiceSchema.index({ client: 1 });
 invoiceSchema.index({ status: 1 });
 invoiceSchema.index({ invoiceDate: 1 });
 invoiceSchema.index({ dueDate: 1 });
+invoiceSchema.index({ shareToken: 1 }, { sparse: true });
 invoiceSchema.index({ 'eInvoice.irn': 1 }, { sparse: true });
 invoiceSchema.index({ 'eWayBill.ewbNumber': 1 }, { sparse: true });
 

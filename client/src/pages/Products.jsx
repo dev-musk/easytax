@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/Products.jsx
-// NEW FILE - Product/Service Master List
+// FEATURE #28: Products → Items Master List
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -39,18 +39,18 @@ export default function Products() {
       });
       setProducts(response.data || []);
     } catch (error) {
-      console.error('Error fetching products:', error);
+      console.error('Error fetching items:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleCreateProduct = () => {
-    navigate('/products/add');
+    navigate('/items/add');
   };
 
   const handleEditProduct = (product) => {
-    navigate(`/products/edit/${product._id}`);
+    navigate(`/items/edit/${product._id}`);
   };
 
   const handleDeleteProduct = async (productId, productName) => {
@@ -59,10 +59,10 @@ export default function Products() {
     try {
       await api.delete(`/api/products/${productId}`);
       setProducts(products.map((p) => (p._id === productId ? { ...p, isActive: false } : p)));
-      alert('Product deactivated successfully');
+      alert('Item deactivated successfully');
     } catch (error) {
-      console.error('Error deleting product:', error);
-      alert('Failed to deactivate product');
+      console.error('Error deleting item:', error);
+      alert('Failed to deactivate item');
     }
   };
 
@@ -72,10 +72,10 @@ export default function Products() {
     try {
       await api.patch(`/api/products/${productId}/restore`);
       setProducts(products.map((p) => (p._id === productId ? { ...p, isActive: true } : p)));
-      alert('Product restored successfully');
+      alert('Item restored successfully');
     } catch (error) {
-      console.error('Error restoring product:', error);
-      alert('Failed to restore product');
+      console.error('Error restoring item:', error);
+      alert('Failed to restore item');
     }
   };
 
@@ -105,7 +105,8 @@ export default function Products() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Products & Services</h1>
+            {/* ✅ CHANGED: Products → Items */}
+            <h1 className="text-2xl font-bold text-gray-900">Items Master</h1>
             <p className="text-gray-600 text-sm mt-1">Manage your product and service catalog</p>
           </div>
           <button
@@ -113,7 +114,8 @@ export default function Products() {
             className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
-            Add Product/Service
+            {/* ✅ CHANGED: Add Product/Service → Add Item */}
+            Add Item
           </button>
         </div>
 
@@ -210,7 +212,7 @@ export default function Products() {
           </div>
         </div>
 
-        {/* Products List */}
+        {/* Items List */}
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -222,12 +224,13 @@ export default function Products() {
                 <Package className="w-8 h-8 text-blue-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {searchTerm || filterType !== 'ALL' ? 'No products found' : 'No products yet'}
+                {/* ✅ CHANGED: No products → No items */}
+                {searchTerm || filterType !== 'ALL' ? 'No items found' : 'No items yet'}
               </h3>
               <p className="text-gray-500 mb-6">
                 {searchTerm || filterType !== 'ALL'
                   ? 'Try adjusting your filters'
-                  : 'Create your first product or service to get started'}
+                  : 'Create your first item to get started'}
               </p>
               {!searchTerm && filterType === 'ALL' && (
                 <button
@@ -235,7 +238,8 @@ export default function Products() {
                   className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <Plus className="w-5 h-5" />
-                  Add Your First Product
+                  {/* ✅ CHANGED */}
+                  Add Your First Item
                 </button>
               )}
             </div>

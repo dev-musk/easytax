@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/routes/organization.js
-// ✅ ENHANCED: Explicit $set handling for turnover updates
+// ✅ FEATURE #21: Multi-GSTIN Management APIs
 // ============================================
 
 import express from 'express';
@@ -12,8 +12,6 @@ import path from 'path';
 import { previewInvoiceNumber } from '../utils/invoiceNumberGenerator.js';
 
 const router = express.Router();
-
-// Apply auth middleware
 router.use(protect);
 
 // Get organization details
@@ -32,16 +30,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ✅ ENHANCED: Update organization details with explicit $set
+// Update organization details
 router.put('/', async (req, res) => {
   try {
-    console.log('📝 [PUT /] Updating organization');
-    console.log('📦 [PUT /] Request body:', JSON.stringify(req.body, null, 2));
-    
-    // ✅ FIX: Use explicit $set to ensure hooks work correctly
     const organization = await Organization.findByIdAndUpdate(
       req.user.organizationId,
-      { $set: req.body }, // ✅ Explicit $set
+      { $set: req.body },
       { new: true, runValidators: true }
     );
     
@@ -49,13 +43,247 @@ router.put('/', async (req, res) => {
       return res.status(404).json({ error: 'Organization not found' });
     }
     
-    console.log('✅ [PUT /] Organization updated');
-    console.log(`📊 [PUT /] Annual Turnover: ₹${organization.annualTurnover?.toLocaleString('en-IN') || 0}`);
-    console.log(`📏 [PUT /] HSN Digits Required: ${organization.hsnDigitsRequired}`);
-    
     res.json(organization);
   } catch (error) {
-    console.error('❌ [PUT /] Error updating organization:', error);
+    console.error('Error updating organization:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Get all GSTIN entries
+router.get('/gstins', async (req, res) => {
+  try {
+    const organization = await Organization.findById(req.user.organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    res.json({
+      gstins: organization.gstinEntries || [],
+      default: organization.gstinEntries?.find(g => g.isDefault),
+    });
+  } catch (error) {
+    console.error('Error fetching GSTINs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Add new GSTIN
+router.post('/gstins', async (req, res) => {
+  try {
+    const { gstin, address, city, pincode, tradeName, registrationDate } = req.body;
+    
+    // Validate GSTIN format
+    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+    if (!gstinRegex.test(gstin)) {
+      return res.status(400).json({ error: 'Invalid GSTIN format' });
+    }
+    
+    const organization = await Organization.findById(req.user.organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    // Check if GSTIN already exists
+    const exists = organization.gstinEntries?.some(g => g.gstin === gstin);
+    if (exists) {
+      return res.status(400).json({ error: 'GSTIN already exists' });
+    }
+    
+    // Extract state code and name
+    const stateCode = gstin.substring(0, 2);
+    const stateMap = {
+      '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab',
+      '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana',
+      '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh',
+      '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh',
+      '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram',
+      '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam',
+      '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha',
+      '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat',
+      '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa',
+      '32': 'Kerala', '33': 'Tamil Nadu', '36': 'Telangana',
+      '37': 'Andhra Pradesh',
+    };
+    
+    const stateName = stateMap[stateCode];
+    if (!stateName) {
+      return res.status(400).json({ error: 'Invalid state code in GSTIN' });
+    }
+    
+    // Create new GSTIN entry
+    const newGstin = {
+      gstin,
+      stateCode,
+      stateName,
+      tradeName: tradeName || organization.name,
+      address,
+      city,
+      pincode,
+      isActive: true,
+      isDefault: organization.gstinEntries.length === 0, // First entry is default
+      registrationDate: registrationDate || new Date(),
+      invoicePrefix: `INV-${stateCode}`,
+      invoiceNumbersByFY: {},
+      nextInvoiceNumber: 1,
+    };
+    
+    organization.gstinEntries.push(newGstin);
+    await organization.save();
+    
+    res.json({
+      message: 'GSTIN added successfully',
+      gstin: newGstin,
+      organization,
+    });
+  } catch (error) {
+    console.error('Error adding GSTIN:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Update GSTIN entry
+router.patch('/gstins/:gstinId', async (req, res) => {
+  try {
+    const { gstinId } = req.params;
+    const updates = req.body;
+    
+    const organization = await Organization.findById(req.user.organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    const gstinEntry = organization.gstinEntries.id(gstinId);
+    if (!gstinEntry) {
+      return res.status(404).json({ error: 'GSTIN entry not found' });
+    }
+    
+    // Update allowed fields
+    if (updates.address) gstinEntry.address = updates.address;
+    if (updates.city) gstinEntry.city = updates.city;
+    if (updates.pincode) gstinEntry.pincode = updates.pincode;
+    if (updates.tradeName !== undefined) gstinEntry.tradeName = updates.tradeName;
+    if (updates.invoicePrefix) gstinEntry.invoicePrefix = updates.invoicePrefix;
+    if (updates.isActive !== undefined) gstinEntry.isActive = updates.isActive;
+    
+    await organization.save();
+    
+    res.json({
+      message: 'GSTIN updated successfully',
+      gstin: gstinEntry,
+    });
+  } catch (error) {
+    console.error('Error updating GSTIN:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Set default GSTIN
+router.patch('/gstins/:gstinId/set-default', async (req, res) => {
+  try {
+    const { gstinId } = req.params;
+    
+    const organization = await Organization.findById(req.user.organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    const gstinEntry = organization.gstinEntries.id(gstinId);
+    if (!gstinEntry) {
+      return res.status(404).json({ error: 'GSTIN entry not found' });
+    }
+    
+    // Remove default from all others
+    organization.gstinEntries.forEach(g => {
+      g.isDefault = false;
+    });
+    
+    // Set new default
+    gstinEntry.isDefault = true;
+    
+    await organization.save();
+    
+    res.json({
+      message: 'Default GSTIN updated successfully',
+      gstin: gstinEntry,
+    });
+  } catch (error) {
+    console.error('Error setting default GSTIN:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Delete GSTIN entry
+router.delete('/gstins/:gstinId', async (req, res) => {
+  try {
+    const { gstinId } = req.params;
+    
+    const organization = await Organization.findById(req.user.organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    const gstinEntry = organization.gstinEntries.id(gstinId);
+    if (!gstinEntry) {
+      return res.status(404).json({ error: 'GSTIN entry not found' });
+    }
+    
+    // Don't allow deleting the last GSTIN
+    if (organization.gstinEntries.length === 1) {
+      return res.status(400).json({ error: 'Cannot delete the last GSTIN entry' });
+    }
+    
+    // If deleting default, set another as default
+    if (gstinEntry.isDefault) {
+      const nextGstin = organization.gstinEntries.find(g => g._id.toString() !== gstinId);
+      if (nextGstin) nextGstin.isDefault = true;
+    }
+    
+    organization.gstinEntries.pull(gstinId);
+    await organization.save();
+    
+    res.json({
+      message: 'GSTIN deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting GSTIN:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Get invoices by GSTIN
+router.get('/gstins/:gstinId/invoices', async (req, res) => {
+  try {
+    const { gstinId } = req.params;
+    
+    const organization = await Organization.findById(req.user.organizationId);
+    
+    if (!organization) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    const gstinEntry = organization.gstinEntries.id(gstinId);
+    if (!gstinEntry) {
+      return res.status(404).json({ error: 'GSTIN entry not found' });
+    }
+    
+    // This would require Invoice model to have gstinId field
+    // For now, return the GSTIN stats
+    res.json({
+      gstin: gstinEntry.gstin,
+      stateName: gstinEntry.stateName,
+      nextInvoiceNumber: gstinEntry.nextInvoiceNumber,
+      invoicePrefix: gstinEntry.invoicePrefix,
+      // TODO: Add actual invoice count and stats
+      message: 'Add gstinId field to Invoice model to filter invoices',
+    });
+  } catch (error) {
+    console.error('Error fetching GSTIN invoices:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -74,7 +302,6 @@ router.post('/logo', upload.single('logo'), async (req, res) => {
       return res.status(404).json({ error: 'Organization not found' });
     }
 
-    // Delete old logo if exists
     if (organization.logo) {
       const oldLogoPath = path.join(process.cwd(), organization.logo);
       if (fs.existsSync(oldLogoPath)) {
@@ -154,7 +381,6 @@ router.post('/signature', upload.single('signature'), async (req, res) => {
       return res.status(404).json({ error: 'Organization not found' });
     }
 
-    // Delete old signature if exists
     if (organization.authorizedSignatory?.signatureImage) {
       const oldSignaturePath = path.join(
         process.cwd(),
@@ -233,7 +459,7 @@ router.delete('/signature', async (req, res) => {
   }
 });
 
-// ✅ ENHANCED: Update bank details with explicit $set
+// Update bank details
 router.patch('/bank-details', async (req, res) => {
   try {
     const organization = await Organization.findByIdAndUpdate(
@@ -350,19 +576,15 @@ router.patch('/display-settings', async (req, res) => {
   }
 });
 
-// ✅ ENHANCED: Dedicated turnover update endpoint with explicit handling
+// Update turnover
 router.patch('/turnover', async (req, res) => {
   try {
     const { annualTurnover } = req.body;
-    
-    console.log('📊 [PATCH /turnover] Updating annual turnover');
-    console.log(`💰 [PATCH /turnover] New turnover: ₹${annualTurnover?.toLocaleString('en-IN') || 0}`);
 
     if (annualTurnover < 0) {
       return res.status(400).json({ error: 'Annual turnover cannot be negative' });
     }
 
-    // ✅ METHOD 1: Using findByIdAndUpdate with explicit $set (recommended)
     const organization = await Organization.findByIdAndUpdate(
       req.user.organizationId,
       { 
@@ -377,9 +599,6 @@ router.patch('/turnover', async (req, res) => {
       return res.status(404).json({ error: 'Organization not found' });
     }
 
-    console.log(`✅ [PATCH /turnover] Turnover updated: ₹${organization.annualTurnover.toLocaleString('en-IN')}`);
-    console.log(`📏 [PATCH /turnover] HSN Digits Required: ${organization.hsnDigitsRequired}`);
-
     res.json({
       message: 'Annual turnover updated',
       organization,
@@ -389,12 +608,12 @@ router.patch('/turnover', async (req, res) => {
         : '> ₹5 crore: 6-digit HSN required, E-Invoice mandatory'
     });
   } catch (error) {
-    console.error('❌ [PATCH /turnover] Error updating turnover:', error);
+    console.error('Error updating turnover:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ✅ NEW: Debug endpoint to check current HSN requirement
+// Get HSN requirement
 router.get('/hsn-requirement', async (req, res) => {
   try {
     const organization = await Organization.findById(req.user.organizationId);

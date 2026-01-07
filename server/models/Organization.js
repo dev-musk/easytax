@@ -1,9 +1,76 @@
 // ============================================
 // FILE: server/models/Organization.js
-// ✅ ENHANCED FIX: Better hook handling + debugging + fallback
+// ✅ FEATURE #21: Multi-GSTIN Support
 // ============================================
 
 import mongoose from 'mongoose';
+
+// Sub-schema for GSTIN entries
+const gstinEntrySchema = new mongoose.Schema({
+  gstin: {
+    type: String,
+    required: true,
+    uppercase: true,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+        return gstinRegex.test(v);
+      },
+      message: 'Invalid GSTIN format (Example: 27AABCU9603R1Z5)'
+    }
+  },
+  stateCode: {
+    type: String,
+    required: true,
+  },
+  stateName: {
+    type: String,
+    required: true,
+  },
+  tradeName: {
+    type: String, // Different business name for this state (optional)
+  },
+  address: {
+    type: String,
+    required: true,
+  },
+  city: {
+    type: String,
+    required: true,
+  },
+  pincode: {
+    type: String,
+    required: true,
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  isDefault: {
+    type: Boolean,
+    default: false,
+  },
+  // Invoice numbering per GSTIN
+  invoicePrefix: {
+    type: String,
+    default: 'INV',
+  },
+  invoiceNumbersByFY: {
+    type: Map,
+    of: Number,
+    default: {},
+  },
+  nextInvoiceNumber: {
+    type: Number,
+    default: 1,
+  },
+  registrationDate: {
+    type: Date,
+  },
+}, {
+  timestamps: true,
+});
 
 const organizationSchema = new mongoose.Schema({
   name: {
@@ -17,26 +84,17 @@ const organizationSchema = new mongoose.Schema({
   },
   phone: String,
   
-  // GST & Tax Registration
+  // ✅ NEW: Multi-GSTIN Support
+  gstinEntries: [gstinEntrySchema],
+  
+  // Legacy fields (kept for backward compatibility)
   gstin: {
     type: String,
-    unique: true,
     sparse: true,
     uppercase: true,
     trim: true,
-    validate: {
-      validator: function(v) {
-        if (!v) return true;
-        const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-        return gstinRegex.test(v);
-      },
-      message: 'Invalid GSTIN format (Example: 27AABCU9603R1Z5)'
-    }
   },
-  
-  gstinStateCode: {
-    type: String,
-  },
+  gstinStateCode: String,
   
   pan: {
     type: String,
@@ -68,7 +126,7 @@ const organizationSchema = new mongoose.Schema({
   
   logo: String,
   
-  // Address
+  // Head Office Address (for organizations without GSTIN)
   address: String,
   city: String,
   state: String,
@@ -107,7 +165,7 @@ const organizationSchema = new mongoose.Schema({
     signatureImage: String,
   },
   
-  // Annual Turnover (for HSN digit requirement)
+  // Annual Turnover
   annualTurnover: {
     type: Number,
     default: 0,
@@ -129,7 +187,7 @@ const organizationSchema = new mongoose.Schema({
   maxInvoices: Number,
   subscriptionEnd: Date,
   
-  // Invoice Number Configuration
+  // Global Invoice Number Configuration
   invoiceNumberMode: {
     type: String,
     enum: ['AUTO', 'MANUAL'],
@@ -206,94 +264,77 @@ const organizationSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// ✅ HELPER FUNCTION: Calculate HSN digits based on turnover
+// Helper function
 function calculateHSNDigits(turnover) {
-  if (turnover <= 50000000) { // ≤ ₹5 crore
+  if (turnover <= 50000000) {
     return 4;
-  } else { // > ₹5 crore
+  } else {
     return 6;
   }
 }
 
-// ✅ ENHANCED: Pre-save hook for save() operations
+// Pre-save hook
 organizationSchema.pre('save', function(next) {
-  console.log('🪝 [PRE-SAVE] Hook triggered');
-  
   // Extract GSTIN state code if GSTIN is set
   if (this.gstin && this.gstin.length >= 2) {
     this.gstinStateCode = this.gstin.substring(0, 2);
-    console.log(`📍 [PRE-SAVE] Updated gstinStateCode: ${this.gstinStateCode}`);
   }
   
-  // ✅ CRITICAL: Update HSN digits when turnover changes
+  // Update HSN digits when turnover changes
   if (this.isModified('annualTurnover') || this.annualTurnover !== undefined) {
-    const oldValue = this.hsnDigitsRequired;
     this.hsnDigitsRequired = calculateHSNDigits(this.annualTurnover);
-    console.log(`📊 [PRE-SAVE] Annual Turnover: ₹${this.annualTurnover.toLocaleString('en-IN')}`);
-    console.log(`📏 [PRE-SAVE] HSN Digits: ${oldValue} → ${this.hsnDigitsRequired}`);
+  }
+  
+  // ✅ NEW: Ensure only one default GSTIN
+  if (this.gstinEntries && this.gstinEntries.length > 0) {
+    const defaultCount = this.gstinEntries.filter(g => g.isDefault).length;
+    if (defaultCount === 0) {
+      // Set first active as default
+      const firstActive = this.gstinEntries.find(g => g.isActive);
+      if (firstActive) firstActive.isDefault = true;
+    } else if (defaultCount > 1) {
+      // Keep only the first default
+      let foundFirst = false;
+      this.gstinEntries.forEach(g => {
+        if (g.isDefault && !foundFirst) {
+          foundFirst = true;
+        } else if (g.isDefault) {
+          g.isDefault = false;
+        }
+      });
+    }
   }
   
   next();
 });
 
-// ✅ ENHANCED: Pre-update hook for findOneAndUpdate() operations
+// Pre-update hook
 organizationSchema.pre('findOneAndUpdate', function(next) {
-  console.log('🪝 [PRE-UPDATE] Hook triggered');
-  
   const update = this.getUpdate();
-  console.log('📦 [PRE-UPDATE] Raw update object:', JSON.stringify(update, null, 2));
-  
-  // Handle multiple update formats:
-  // 1. { $set: { field: value } }
-  // 2. { field: value }
-  // 3. Mixed operators
-  
   let updateFields = update.$set || update;
   
-  // Extract values - prioritize $set, fallback to direct
   const gstin = update.$set?.gstin || update.gstin;
   const annualTurnover = update.$set?.annualTurnover || update.annualTurnover;
   
-  console.log(`📊 [PRE-UPDATE] Extracted annualTurnover: ${annualTurnover}`);
-  console.log(`🏢 [PRE-UPDATE] Extracted gstin: ${gstin}`);
-  
-  // Ensure $set object exists
   if (!update.$set) {
     update.$set = {};
   }
   
-  // Extract GSTIN state code if GSTIN is being updated
   if (gstin && gstin.length >= 2) {
     const stateCode = gstin.substring(0, 2);
     update.$set.gstinStateCode = stateCode;
-    console.log(`📍 [PRE-UPDATE] Setting gstinStateCode: ${stateCode}`);
   }
   
-  // ✅ CRITICAL: Update HSN digits when turnover changes
   if (annualTurnover !== undefined && annualTurnover !== null) {
     const hsnDigits = calculateHSNDigits(annualTurnover);
     update.$set.hsnDigitsRequired = hsnDigits;
-    
-    console.log(`✅ [PRE-UPDATE] Annual Turnover: ₹${annualTurnover.toLocaleString('en-IN')}`);
-    console.log(`✅ [PRE-UPDATE] Setting hsnDigitsRequired: ${hsnDigits}`);
-    console.log(`💡 [PRE-UPDATE] Rule: ${annualTurnover <= 50000000 ? '≤ ₹5 crore → 4 digits' : '> ₹5 crore → 6 digits'}`);
   }
   
-  console.log('📦 [PRE-UPDATE] Final update object:', JSON.stringify(update, null, 2));
   next();
 });
 
-// ✅ POST-UPDATE HOOK: Verify the update worked
-organizationSchema.post('findOneAndUpdate', async function(doc) {
-  if (doc) {
-    console.log('✅ [POST-UPDATE] Update completed');
-    console.log(`📊 [POST-UPDATE] Final annualTurnover: ₹${doc.annualTurnover?.toLocaleString('en-IN') || 0}`);
-    console.log(`📏 [POST-UPDATE] Final hsnDigitsRequired: ${doc.hsnDigitsRequired}`);
-  }
-});
-
 // Indexes
-organizationSchema.index({ gstin: 1 });
 organizationSchema.index({ email: 1 });
+organizationSchema.index({ 'gstinEntries.gstin': 1 });
 
 export default mongoose.model('Organization', organizationSchema);

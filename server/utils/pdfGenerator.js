@@ -5,6 +5,28 @@
 // ============================================
 
 export const generateInvoicePDF = (invoice, organization) => {
+  // ✅ FEATURE #20: Get template settings with defaults
+  const templateSettings = invoice.templateSettings || {
+    fontFamily: "Roboto",
+    headerStyle: "BOXED",
+    borderStyle: "PARTIAL",
+    themeColor: "BLUE",
+    textAlignment: "LEFT",
+  };
+
+  // Theme color mapping
+  const themeColors = {
+    BLUE: { primary: "#2563eb", light: "#dbeafe", dark: "#1e40af" },
+    PURPLE: { primary: "#9333ea", light: "#f3e8ff", dark: "#7e22ce" },
+    GREEN: { primary: "#16a34a", light: "#dcfce7", dark: "#15803d" },
+    ORANGE: { primary: "#ea580c", light: "#ffedd5", dark: "#c2410c" },
+    RED: { primary: "#dc2626", light: "#fee2e2", dark: "#b91c1c" },
+    INDIGO: { primary: "#4f46e5", light: "#e0e7ff", dark: "#4338ca" },
+  };
+
+  const currentTheme =
+    themeColors[templateSettings.themeColor] || themeColors.BLUE;
+
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString("en-IN", {
       day: "2-digit",
@@ -49,7 +71,9 @@ export const generateInvoicePDF = (invoice, organization) => {
     }
 
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-family: '${
+          templateSettings.fontFamily
+        }', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       font-size: 12px;
       line-height: 1.6;
       color: #333;
@@ -58,21 +82,37 @@ export const generateInvoicePDF = (invoice, organization) => {
     }
 
     .invoice-container {
-      max-width: 210mm;
-      margin: 0 auto;
-      background: white;
-      border: 1px solid #ddd;
-      padding: 20px;
-    }
+  max-width: 210mm;
+  margin: 0 auto;
+  background: white;
+  ${templateSettings.borderStyle === "FULL" ? "border: 2px solid #ccc;" : ""}
+  ${
+    templateSettings.borderStyle === "PARTIAL"
+      ? "border-top: 2px solid #ccc; border-bottom: 2px solid #ccc;"
+      : ""
+  }
+  padding: 20px;
+}
 
-    .invoice-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 3px solid #2563eb;
-    }
+   .invoice-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 30px;
+  ${
+    templateSettings.headerStyle === "BOXED"
+      ? `
+    background: ${currentTheme.light};
+    border: 2px solid ${currentTheme.primary};
+    border-radius: 8px;
+    padding: 20px;
+  `
+      : `
+    padding-bottom: 20px;
+    border-bottom: 3px solid ${currentTheme.primary};
+  `
+  }
+}
 
     .company-logo {
       max-height: 80px;
@@ -81,12 +121,12 @@ export const generateInvoicePDF = (invoice, organization) => {
       margin-bottom: 15px;
     }
 
-    .company-details h1 {
-      font-size: 24px;
-      color: #2563eb;
-      margin-bottom: 10px;
-    }
-
+   .company-details h1 {
+  font-size: 24px;
+  color: ${currentTheme.primary};
+  margin-bottom: 10px;
+  text-align: ${templateSettings.textAlignment.toLowerCase()};
+}
     .company-details p {
       margin: 3px 0;
       font-size: 11px;
@@ -97,11 +137,11 @@ export const generateInvoicePDF = (invoice, organization) => {
       text-align: right;
     }
 
-    .invoice-title h2 {
-      font-size: 28px;
-      color: #2563eb;
-      margin-bottom: 10px;
-    }
+   .invoice-title h2 {
+  font-size: 28px;
+  color: ${currentTheme.primary};
+  margin-bottom: 10px;
+}
 
     .invoice-title .invoice-number {
       font-size: 14px;
@@ -290,12 +330,11 @@ export const generateInvoicePDF = (invoice, organization) => {
     .totals-row.subtotal {
       background: #f9fafb;
     }
-
-    .totals-row.total {
-      background: #2563eb;
-      color: white;
-      font-size: 13px;
-    }
+.totals-row.total {
+  background: ${currentTheme.primary};
+  color: white;
+  font-size: 13px;
+}
 
     .totals-row.total .label,
     .totals-row.total .value {

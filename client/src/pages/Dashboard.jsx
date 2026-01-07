@@ -1,6 +1,6 @@
 // ============================================
-// FILE: client/src/pages/Dashboard_ENHANCED.jsx
-// Enhanced Dashboard with Analytics
+// FILE: client/src/pages/Dashboard.jsx
+// ✅ FEATURE #33: Clickable Analytics Cards
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -39,6 +39,7 @@ export default function Dashboard() {
     );
   }
 
+  // ✅ FEATURE #33: Clickable stat cards with navigation
   const statCards = [
     {
       title: 'Total Invoices',
@@ -47,6 +48,7 @@ export default function Dashboard() {
       color: 'bg-blue-500',
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
+      onClick: () => navigate('/invoices'), // ✅ Navigate to all invoices
     },
     {
       title: 'Total Clients',
@@ -55,6 +57,7 @@ export default function Dashboard() {
       color: 'bg-green-500',
       bgColor: 'bg-green-50',
       textColor: 'text-green-600',
+      onClick: () => navigate('/clients'), // ✅ Navigate to clients
     },
     {
       title: 'Outstanding',
@@ -63,6 +66,7 @@ export default function Dashboard() {
       color: 'bg-yellow-500',
       bgColor: 'bg-yellow-50',
       textColor: 'text-yellow-600',
+      onClick: () => navigate('/invoices?status=PENDING'), // ✅ Navigate to pending invoices
     },
     {
       title: 'Overdue Invoices',
@@ -71,6 +75,7 @@ export default function Dashboard() {
       color: 'bg-red-500',
       bgColor: 'bg-red-50',
       textColor: 'text-red-600',
+      onClick: () => navigate('/invoices?status=OVERDUE'), // ✅ Navigate to overdue invoices
     },
   ];
 
@@ -89,23 +94,28 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* ✅ FEATURE #33: Clickable Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {statCards.map((stat) => (
-            <div
+            <button
               key={stat.title}
-              className="bg-white rounded-lg shadow-sm p-6 border border-gray-200 hover:shadow-md transition-shadow"
+              onClick={stat.onClick}
+              className="bg-white rounded-lg shadow-sm p-6 border border-gray-200 hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer text-left transform hover:scale-105"
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className="text-sm text-gray-600 font-medium mb-2">{stat.title}</p>
                   <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  {/* ✅ Click indicator */}
+                  <p className="text-xs text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Click to view details →
+                  </p>
                 </div>
                 <div className={`p-3 rounded-lg ${stat.bgColor}`}>
                   <stat.icon className={`w-6 h-6 ${stat.textColor}`} />
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -197,7 +207,7 @@ export default function Dashboard() {
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p>No recent invoices</p>
                 <button
-                  onClick={() => navigate('/invoices/new')}
+                  onClick={() => navigate('/invoices/add')}
                   className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
                 >
                   Create your first invoice

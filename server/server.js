@@ -19,11 +19,19 @@ import analyticsRoutes from './routes/analytics.js';
 import organizationRoutes from './routes/organization.js';
 import quotationRoutes from './routes/quotations.js';
 import hsnRoutes from './routes/hsn.js';
+import reminderRoutes from './routes/reminders.js';
+import { initSchedulers } from './services/scheduler.js';
+
 
 // PHASE 2 ROUTES - NEW IMPORTS
 import paymentRoutes from './routes/payments.js';
+import purchaseOrderRoutes from './routes/purchaseOrders.js';
 import gstReportRoutes from './routes/gstReports.js';
 import creditDebitNoteRoutes from './routes/creditDebitNotes.js';
+import reportRoutes from './routes/reports.js';
+import auditLogRoutes from './routes/auditLogs.js';
+import threeWayMatchingRoutes from './routes/threeWayMatching.js';
+import smartCategorizationRoutes from './routes/smartCategorization.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -38,6 +46,9 @@ const PORT = process.env.PORT || 5000;
 
 // Connect to MongoDB
 connectDB();
+
+// ✅ FEATURES #27 & #31: Initialize email schedulers
+initSchedulers();
 
 // Middleware
 app.use(cors({
@@ -74,6 +85,7 @@ app.use('/api/recurring-invoices', recurringInvoiceRoutes);
 
 // Phase 2 Routes - Payments & Reports (NEW)
 app.use('/api/payments', paymentRoutes);
+app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/gst-reports', gstReportRoutes);
 app.use('/api/credit-debit-notes', creditDebitNoteRoutes);
 
@@ -81,6 +93,11 @@ app.use('/api/credit-debit-notes', creditDebitNoteRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/quotations', quotationRoutes);
 app.use('/api/hsn', hsnRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/reminders', reminderRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/three-way-matching', threeWayMatchingRoutes);
+app.use('/api/smart-categorization', smartCategorizationRoutes);
 
 // 404 handler
 app.use((req, res) => {

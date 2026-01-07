@@ -1,18 +1,20 @@
 // ============================================
 // FILE: client/src/pages/GSTReports.jsx
-// GST Reports with Excel Export - COMPLETE
+// ✅ VERIFIED: GST Reports with Excel Export
 // ============================================
 
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../utils/api';
-import { FileText, Download, Calendar } from 'lucide-react';
-import * as XLSX from 'xlsx';  // ✅ This line should be present
+import { FileText, Download, Calendar, AlertCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 export default function GSTReports() {
-  const [activeTab, setActiveTab] = useState('gstr1'); // gstr1, gstr3b, hsn
+  const [activeTab, setActiveTab] = useState('gstr1');
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
+  
   const [period, setPeriod] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -34,7 +36,14 @@ export default function GSTReports() {
   ];
 
   const fetchReport = async () => {
+    if (!period.month || !period.year) {
+      setError('Please select both month and year');
+      return;
+    }
+
     setLoading(true);
+    setError(null);
+    
     try {
       let endpoint = '';
       switch (activeTab) {
@@ -47,15 +56,20 @@ export default function GSTReports() {
         case 'hsn':
           endpoint = '/api/gst-reports/hsn-summary';
           break;
+        default:
+          endpoint = '/api/gst-reports/gstr1';
       }
 
       const response = await api.get(endpoint, {
         params: { month: period.month, year: period.year },
       });
+      
       setReport(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching report:', error);
-      alert('Failed to generate report');
+      setError(error.response?.data?.error || 'Failed to generate report. Please try again.');
+      setReport(null);
     } finally {
       setLoading(false);
     }
@@ -68,222 +82,225 @@ export default function GSTReports() {
   }, [activeTab, period]);
 
   // ============================================
-  // EXCEL EXPORT FUNCTIONS - COMPLETE
+  // EXCEL EXPORT FUNCTIONS
   // ============================================
 
   const exportGSTR1ToExcel = () => {
     if (!report) return;
 
-    // Create workbook
-    const wb = XLSX.utils.book_new();
+    try {
+      const wb = XLSX.utils.book_new();
 
-    // 1. Summary Sheet
-    const summaryData = [
-      ['GSTR-1 Report'],
-      ['Period:', `${months.find(m => m.value === period.month)?.label} ${period.year}`],
-      ['GSTIN:', report.gstin || ''],
-      ['Legal Name:', report.legalName || ''],
-      [],
-      ['Summary'],
-      ['Total Invoices', report.summary?.totalInvoices || 0],
-      ['Total Taxable Value', report.summary?.totalTaxableValue || 0],
-      ['Total CGST', report.summary?.totalCGST || 0],
-      ['Total SGST', report.summary?.totalSGST || 0],
-      ['Total IGST', report.summary?.totalIGST || 0],
-      ['Total Tax', report.summary?.totalTax || 0],
-      ['Total Invoice Value', report.summary?.totalInvoiceValue || 0],
-    ];
-    const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
-
-    // 2. B2B Sheet
-    if (report.b2b && report.b2b.length > 0) {
-      const b2bData = [
-        ['B2B Invoices'],
+      // 1. Summary Sheet
+      const summaryData = [
+        ['GSTR-1 Report'],
+        ['Period:', `${months.find(m => m.value === period.month)?.label} ${period.year}`],
+        ['GSTIN:', report.gstin || 'N/A'],
+        ['Legal Name:', report.legalName || 'N/A'],
         [],
-        ['Invoice Number', 'Invoice Date', 'Recipient GSTIN', 'Recipient Name', 'Invoice Value', 'Taxable Value', 'CGST', 'SGST', 'IGST'],
-        ...report.b2b.map(inv => [
-          inv.invoiceNumber,
-          new Date(inv.invoiceDate).toLocaleDateString('en-IN'),
-          inv.recipientGSTIN,
-          inv.recipientName,
-          inv.invoiceValue,
-          inv.taxableValue,
-          inv.cgst,
-          inv.sgst,
-          inv.igst,
-        ]),
+        ['Summary'],
+        ['Total Invoices', report.summary?.totalInvoices || 0],
+        ['Total Taxable Value', report.summary?.totalTaxableValue || 0],
+        ['Total CGST', report.summary?.totalCGST || 0],
+        ['Total SGST', report.summary?.totalSGST || 0],
+        ['Total IGST', report.summary?.totalIGST || 0],
+        ['Total Tax', report.summary?.totalTax || 0],
+        ['Total Invoice Value', report.summary?.totalInvoiceValue || 0],
       ];
-      const b2bWS = XLSX.utils.aoa_to_sheet(b2bData);
-      XLSX.utils.book_append_sheet(wb, b2bWS, 'B2B');
-    }
+      const summaryWS = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summaryWS, 'Summary');
 
-    // 3. B2CL Sheet (if exists)
-    if (report.b2cl && report.b2cl.length > 0) {
-      const b2clData = [
-        ['B2C Large Invoices (>2.5 Lakhs)'],
-        [],
-        ['Invoice Number', 'Invoice Date', 'Invoice Value', 'Place of Supply', 'IGST'],
-        ...report.b2cl.map(inv => [
-          inv.invoiceNumber,
-          new Date(inv.invoiceDate).toLocaleDateString('en-IN'),
-          inv.invoiceValue,
-          inv.placeOfSupply,
-          inv.igst,
-        ]),
-      ];
-      const b2clWS = XLSX.utils.aoa_to_sheet(b2clData);
-      XLSX.utils.book_append_sheet(wb, b2clWS, 'B2CL');
-    }
+      // 2. B2B Sheet
+      if (report.b2b && report.b2b.length > 0) {
+        const b2bData = [
+          ['B2B Invoices'],
+          [],
+          ['Invoice Number', 'Invoice Date', 'Recipient GSTIN', 'Recipient Name', 'Invoice Value', 'Taxable Value', 'CGST', 'SGST', 'IGST'],
+          ...report.b2b.map(inv => [
+            inv.invoiceNumber,
+            new Date(inv.invoiceDate).toLocaleDateString('en-IN'),
+            inv.recipientGSTIN,
+            inv.recipientName,
+            inv.invoiceValue,
+            inv.taxableValue,
+            inv.cgst,
+            inv.sgst,
+            inv.igst,
+          ]),
+        ];
+        const b2bWS = XLSX.utils.aoa_to_sheet(b2bData);
+        XLSX.utils.book_append_sheet(wb, b2bWS, 'B2B');
+      }
 
-    // 4. B2CS Sheet
-    if (report.b2cs) {
-      const b2csData = [
-        ['B2C Small Summary'],
-        [],
-        ['Type', 'Place of Supply', 'Taxable Value', 'CGST', 'SGST'],
-        [
-          report.b2cs.type,
-          report.b2cs.placeOfSupply,
-          report.b2cs.taxableValue,
-          report.b2cs.cgst,
-          report.b2cs.sgst,
-        ],
-      ];
-      const b2csWS = XLSX.utils.aoa_to_sheet(b2csData);
-      XLSX.utils.book_append_sheet(wb, b2csWS, 'B2CS');
-    }
+      // 3. B2CL Sheet
+      if (report.b2cl && report.b2cl.length > 0) {
+        const b2clData = [
+          ['B2C Large Invoices (>2.5 Lakhs Interstate)'],
+          [],
+          ['Invoice Number', 'Invoice Date', 'Invoice Value', 'Place of Supply', 'IGST'],
+          ...report.b2cl.map(inv => [
+            inv.invoiceNumber,
+            new Date(inv.invoiceDate).toLocaleDateString('en-IN'),
+            inv.invoiceValue,
+            inv.placeOfSupply,
+            inv.igst,
+          ]),
+        ];
+        const b2clWS = XLSX.utils.aoa_to_sheet(b2clData);
+        XLSX.utils.book_append_sheet(wb, b2clWS, 'B2CL');
+      }
 
-    // 5. HSN Summary Sheet
-    if (report.hsn && report.hsn.length > 0) {
-      const hsnData = [
-        ['HSN Summary'],
-        [],
-        ['HSN Code', 'Description', 'UQC', 'Quantity', 'Rate %', 'Taxable Value', 'CGST', 'SGST', 'IGST'],
-        ...report.hsn.map(item => [
-          item.hsnCode,
-          item.description,
-          item.uqc,
-          item.totalQuantity,
-          item.rate,
-          item.taxableValue,
-          item.cgst,
-          item.sgst,
-          item.igst,
-        ]),
-      ];
-      const hsnWS = XLSX.utils.aoa_to_sheet(hsnData);
-      XLSX.utils.book_append_sheet(wb, hsnWS, 'HSN Summary');
-    }
+      // 4. B2CS Sheet
+      if (report.b2cs) {
+        const b2csData = [
+          ['B2C Small Summary'],
+          [],
+          ['Type', 'Place of Supply', 'Taxable Value', 'CGST', 'SGST'],
+          [
+            report.b2cs.type,
+            report.b2cs.placeOfSupply,
+            report.b2cs.taxableValue,
+            report.b2cs.cgst,
+            report.b2cs.sgst,
+          ],
+        ];
+        const b2csWS = XLSX.utils.aoa_to_sheet(b2csData);
+        XLSX.utils.book_append_sheet(wb, b2csWS, 'B2CS');
+      }
 
-    // Download
-    const fileName = `GSTR1_${months.find(m => m.value === period.month)?.label}_${period.year}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+      // 5. HSN Summary Sheet
+      if (report.hsn && report.hsn.length > 0) {
+        const hsnData = [
+          ['HSN Summary'],
+          [],
+          ['HSN Code', 'Description', 'UQC', 'Quantity', 'Rate %', 'Taxable Value', 'CGST', 'SGST', 'IGST'],
+          ...report.hsn.map(item => [
+            item.hsnCode,
+            item.description,
+            item.uqc,
+            item.totalQuantity,
+            item.rate,
+            item.taxableValue,
+            item.cgst,
+            item.sgst,
+            item.igst,
+          ]),
+        ];
+        const hsnWS = XLSX.utils.aoa_to_sheet(hsnData);
+        XLSX.utils.book_append_sheet(wb, hsnWS, 'HSN Summary');
+      }
+
+      const fileName = `GSTR1_${months.find(m => m.value === period.month)?.label}_${period.year}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      alert('GSTR-1 exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export GSTR-1. Please try again.');
+    }
   };
 
   const exportGSTR3BToExcel = () => {
     if (!report) return;
 
-    const wb = XLSX.utils.book_new();
+    try {
+      const wb = XLSX.utils.book_new();
 
-    // Summary Sheet
-    const summaryData = [
-      ['GSTR-3B Report'],
-      ['Period:', `${months.find(m => m.value === period.month)?.label} ${period.year}`],
-      ['GSTIN:', report.gstin || ''],
-      ['Legal Name:', report.legalName || ''],
-      [],
-      ['3.1 Outward Taxable Supplies'],
-      ['Taxable Value', report.outwardSupplies?.taxableValue || 0],
-      ['CGST', report.outwardSupplies?.cgst || 0],
-      ['SGST', report.outwardSupplies?.sgst || 0],
-      ['IGST', report.outwardSupplies?.igst || 0],
-      ['Cess', report.outwardSupplies?.cess || 0],
-      [],
-      ['3.2 Inter-State Supplies'],
-      ['Taxable Value', report.interStateSupplies?.taxableValue || 0],
-      ['IGST', report.interStateSupplies?.igst || 0],
-      [],
-      ['4. Eligible ITC (Input Tax Credit)'],
-      ['Import of Goods - CGST', report.itc?.imports?.cgst || 0],
-      ['Import of Goods - SGST', report.itc?.imports?.sgst || 0],
-      ['Import of Goods - IGST', report.itc?.imports?.igst || 0],
-      ['All Other ITC - CGST', report.itc?.all?.cgst || 0],
-      ['All Other ITC - SGST', report.itc?.all?.sgst || 0],
-      ['All Other ITC - IGST', report.itc?.all?.igst || 0],
-      [],
-      ['Net Tax Payable'],
-      ['CGST', report.taxPayable?.cgst || 0],
-      ['SGST', report.taxPayable?.sgst || 0],
-      ['IGST', report.taxPayable?.igst || 0],
-      ['Total Tax', report.taxPayable?.totalTax || 0],
-    ];
+      const summaryData = [
+        ['GSTR-3B Report'],
+        ['Period:', `${months.find(m => m.value === period.month)?.label} ${period.year}`],
+        ['GSTIN:', report.gstin || 'N/A'],
+        ['Legal Name:', report.legalName || 'N/A'],
+        [],
+        ['3.1 Outward Taxable Supplies'],
+        ['Taxable Value', report.outwardSupplies?.taxableValue || 0],
+        ['CGST', report.outwardSupplies?.cgst || 0],
+        ['SGST', report.outwardSupplies?.sgst || 0],
+        ['IGST', report.outwardSupplies?.igst || 0],
+        ['Cess', report.outwardSupplies?.cess || 0],
+        [],
+        ['3.2 Inter-State Supplies'],
+        ['Taxable Value', report.interStateSupplies?.taxableValue || 0],
+        ['IGST', report.interStateSupplies?.igst || 0],
+        [],
+        ['4. Eligible ITC (Input Tax Credit)'],
+        ['Import of Goods - CGST', report.itc?.imports?.cgst || 0],
+        ['Import of Goods - SGST', report.itc?.imports?.sgst || 0],
+        ['Import of Goods - IGST', report.itc?.imports?.igst || 0],
+        ['All Other ITC - CGST', report.itc?.all?.cgst || 0],
+        ['All Other ITC - SGST', report.itc?.all?.sgst || 0],
+        ['All Other ITC - IGST', report.itc?.all?.igst || 0],
+        [],
+        ['Net Tax Payable'],
+        ['CGST', report.taxPayable?.cgst || 0],
+        ['SGST', report.taxPayable?.sgst || 0],
+        ['IGST', report.taxPayable?.igst || 0],
+        ['Total Tax', report.taxPayable?.totalTax || 0],
+      ];
 
-    const ws = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, ws, 'GSTR-3B');
+      const ws = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, ws, 'GSTR-3B');
 
-    // Download
-    const fileName = `GSTR3B_${months.find(m => m.value === period.month)?.label}_${period.year}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+      const fileName = `GSTR3B_${months.find(m => m.value === period.month)?.label}_${period.year}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      alert('GSTR-3B exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export GSTR-3B. Please try again.');
+    }
   };
 
   const exportHSNToExcel = () => {
     if (!report || !report.summary) return;
 
-    const wb = XLSX.utils.book_new();
+    try {
+      const wb = XLSX.utils.book_new();
 
-    // HSN Summary Sheet
-    const hsnData = [
-      ['HSN Summary Report'],
-      ['Period:', `${months.find(m => m.value === period.month)?.label} ${period.year}`],
-      [],
-      ['Summary Totals'],
-      ['Total Quantity', report.totals?.totalQuantity || 0],
-      ['Total Taxable Value', report.totals?.taxableValue || 0],
-      ['Total CGST', report.totals?.cgst || 0],
-      ['Total SGST', report.totals?.sgst || 0],
-      ['Total IGST', report.totals?.igst || 0],
-      ['Total Tax', report.totals?.totalTax || 0],
-      ['Total Value', report.totals?.totalValue || 0],
-      [],
-      ['HSN Code', 'Description', 'UQC', 'Quantity', 'Rate %', 'Taxable Value', 'CGST', 'SGST', 'IGST', 'Total Tax'],
-      ...report.summary.map(item => [
-        item.hsnCode,
-        item.description,
-        item.uqc,
-        item.totalQuantity,
-        item.gstRate,
-        item.taxableValue,
-        item.cgst,
-        item.sgst,
-        item.igst,
-        item.totalTax,
-      ]),
-    ];
+      const hsnData = [
+        ['HSN Summary Report'],
+        ['Period:', `${months.find(m => m.value === period.month)?.label} ${period.year}`],
+        [],
+        ['Summary Totals'],
+        ['Total Quantity', report.totals?.totalQuantity || 0],
+        ['Total Taxable Value', report.totals?.taxableValue || 0],
+        ['Total CGST', report.totals?.cgst || 0],
+        ['Total SGST', report.totals?.sgst || 0],
+        ['Total IGST', report.totals?.igst || 0],
+        ['Total Tax', report.totals?.totalTax || 0],
+        ['Total Value', report.totals?.totalValue || 0],
+        [],
+        ['HSN Code', 'Description', 'UQC', 'Quantity', 'Rate %', 'Taxable Value', 'CGST', 'SGST', 'IGST', 'Total Tax'],
+        ...report.summary.map(item => [
+          item.hsnCode,
+          item.description,
+          item.uqc,
+          item.totalQuantity,
+          item.gstRate,
+          item.taxableValue,
+          item.cgst,
+          item.sgst,
+          item.igst,
+          item.totalTax,
+        ]),
+      ];
 
-    const ws = XLSX.utils.aoa_to_sheet(hsnData);
+      const ws = XLSX.utils.aoa_to_sheet(hsnData);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 30 }, { wch: 8 }, { wch: 12 }, { wch: 10 },
+        { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+      ];
 
-    // Auto-width columns
-    const maxWidth = 50;
-    const colWidths = [
-      { wch: 12 }, // HSN Code
-      { wch: 30 }, // Description
-      { wch: 8 },  // UQC
-      { wch: 12 }, // Quantity
-      { wch: 10 }, // Rate
-      { wch: 15 }, // Taxable Value
-      { wch: 12 }, // CGST
-      { wch: 12 }, // SGST
-      { wch: 12 }, // IGST
-      { wch: 12 }, // Total Tax
-    ];
-    ws['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, ws, 'HSN Summary');
 
-    XLSX.utils.book_append_sheet(wb, ws, 'HSN Summary');
-
-    // Download
-    const fileName = `HSN_Summary_${months.find(m => m.value === period.month)?.label}_${period.year}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+      const fileName = `HSN_Summary_${months.find(m => m.value === period.month)?.label}_${period.year}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      alert('HSN Summary exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export HSN Summary. Please try again.');
+    }
   };
 
   const handleExport = () => {
@@ -319,15 +336,15 @@ export default function GSTReports() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">GST Reports</h1>
           <p className="text-gray-600 text-sm mt-1">
-            Generate GSTR-1, GSTR-3B, and HSN Summary reports
+            Generate GSTR-1, GSTR-3B, and HSN Summary reports with Excel export
           </p>
         </div>
 
         {/* Period Selector */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
             <Calendar className="w-5 h-5 text-gray-400" />
-            <div className="flex gap-4 flex-1">
+            <div className="flex flex-col md:flex-row gap-4 flex-1">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Month
@@ -353,7 +370,7 @@ export default function GSTReports() {
                   onChange={(e) => setPeriod({ ...period, year: parseInt(e.target.value) })}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  {[2024, 2025, 2026].map((year) => (
+                  {[2023, 2024, 2025, 2026].map((year) => (
                     <option key={year} value={year}>
                       {year}
                     </option>
@@ -363,8 +380,8 @@ export default function GSTReports() {
             </div>
             <button
               onClick={handleExport}
-              disabled={!report}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              disabled={!report || loading}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed mt-2 md:mt-6"
               title={!report ? 'Generate a report first' : 'Export to Excel'}
             >
               <Download className="w-4 h-4" />
@@ -373,13 +390,24 @@ export default function GSTReports() {
           </div>
         </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-red-800">Error</p>
+              <p className="text-sm text-red-600 mt-1">{error}</p>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="border-b border-gray-200">
-            <div className="flex">
+            <div className="flex overflow-x-auto">
               <button
                 onClick={() => setActiveTab('gstr1')}
-                className={`px-6 py-3 text-sm font-medium ${
+                className={`px-6 py-3 text-sm font-medium whitespace-nowrap ${
                   activeTab === 'gstr1'
                     ? 'border-b-2 border-blue-600 text-blue-600'
                     : 'text-gray-600 hover:text-gray-900'
@@ -389,7 +417,7 @@ export default function GSTReports() {
               </button>
               <button
                 onClick={() => setActiveTab('gstr3b')}
-                className={`px-6 py-3 text-sm font-medium ${
+                className={`px-6 py-3 text-sm font-medium whitespace-nowrap ${
                   activeTab === 'gstr3b'
                     ? 'border-b-2 border-blue-600 text-blue-600'
                     : 'text-gray-600 hover:text-gray-900'
@@ -399,7 +427,7 @@ export default function GSTReports() {
               </button>
               <button
                 onClick={() => setActiveTab('hsn')}
-                className={`px-6 py-3 text-sm font-medium ${
+                className={`px-6 py-3 text-sm font-medium whitespace-nowrap ${
                   activeTab === 'hsn'
                     ? 'border-b-2 border-blue-600 text-blue-600'
                     : 'text-gray-600 hover:text-gray-900'
@@ -420,12 +448,17 @@ export default function GSTReports() {
             ) : !report ? (
               <div className="text-center py-12">
                 <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">No data available for selected period</p>
+                <p className="text-gray-600">
+                  {error ? 'Unable to load report' : 'No data available for selected period'}
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Try selecting a different period or ensure invoices exist for this month
+                </p>
               </div>
             ) : (
               <>
                 {/* GSTR-1 Report */}
-                {activeTab === 'gstr1' && report && (
+                {activeTab === 'gstr1' && (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-blue-50 rounded-lg p-4">
@@ -463,26 +496,26 @@ export default function GSTReports() {
                           <table className="w-full text-sm">
                             <thead className="bg-gray-50">
                               <tr>
-                                <th className="text-left py-2 px-3">Invoice #</th>
-                                <th className="text-left py-2 px-3">Date</th>
-                                <th className="text-left py-2 px-3">GSTIN</th>
-                                <th className="text-left py-2 px-3">Client</th>
-                                <th className="text-right py-2 px-3">Value</th>
-                                <th className="text-right py-2 px-3">CGST</th>
-                                <th className="text-right py-2 px-3">SGST</th>
-                                <th className="text-right py-2 px-3">IGST</th>
+                                <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600">Invoice #</th>
+                                <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600">Date</th>
+                                <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600">GSTIN</th>
+                                <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600">Client</th>
+                                <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">Value</th>
+                                <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">CGST</th>
+                                <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">SGST</th>
+                                <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">IGST</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                               {report.b2b.map((inv, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
-                                  <td className="py-2 px-3">{inv.invoiceNumber}</td>
+                                  <td className="py-2 px-3 font-medium">{inv.invoiceNumber}</td>
                                   <td className="py-2 px-3">
                                     {new Date(inv.invoiceDate).toLocaleDateString('en-IN')}
                                   </td>
-                                  <td className="py-2 px-3">{inv.recipientGSTIN}</td>
+                                  <td className="py-2 px-3 text-xs">{inv.recipientGSTIN}</td>
                                   <td className="py-2 px-3">{inv.recipientName}</td>
-                                  <td className="py-2 px-3 text-right">
+                                  <td className="py-2 px-3 text-right font-medium">
                                     ₹{inv.taxableValue.toLocaleString('en-IN')}
                                   </td>
                                   <td className="py-2 px-3 text-right">
@@ -500,14 +533,14 @@ export default function GSTReports() {
                           </table>
                         </div>
                       ) : (
-                        <p className="text-gray-500 text-sm">No B2B invoices</p>
+                        <p className="text-gray-500 text-sm">No B2B invoices for this period</p>
                       )}
                     </div>
                   </div>
                 )}
 
                 {/* GSTR-3B Report */}
-                {activeTab === 'gstr3b' && report && (
+                {activeTab === 'gstr3b' && (
                   <div className="space-y-6">
                     <div className="bg-blue-50 rounded-lg p-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -549,10 +582,7 @@ export default function GSTReports() {
                         <div>
                           <p className="text-sm text-gray-600">Taxable Value</p>
                           <p className="text-lg font-bold text-gray-900 mt-1">
-                            ₹
-                            {(report.outwardSupplies?.taxableValue || 0).toLocaleString(
-                              'en-IN'
-                            )}
+                            ₹{(report.outwardSupplies?.taxableValue || 0).toLocaleString('en-IN')}
                           </p>
                         </div>
                         <div>
@@ -572,13 +602,13 @@ export default function GSTReports() {
                 )}
 
                 {/* HSN Summary */}
-                {activeTab === 'hsn' && report && (
+                {activeTab === 'hsn' && (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-blue-50 rounded-lg p-4">
                         <p className="text-sm text-blue-600 font-medium">Total Quantity</p>
                         <p className="text-2xl font-bold text-blue-900 mt-1">
-                          {report.totals?.totalQuantity?.toFixed(2) || 0}
+                          {(report.totals?.totalQuantity || 0).toFixed(2)}
                         </p>
                       </div>
                       <div className="bg-green-50 rounded-lg p-4">
@@ -601,44 +631,48 @@ export default function GSTReports() {
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="text-left py-2 px-3">HSN Code</th>
-                            <th className="text-left py-2 px-3">Description</th>
-                            <th className="text-center py-2 px-3">UQC</th>
-                            <th className="text-right py-2 px-3">Quantity</th>
-                            <th className="text-right py-2 px-3">Value</th>
-                            <th className="text-right py-2 px-3">CGST</th>
-                            <th className="text-right py-2 px-3">SGST</th>
-                            <th className="text-right py-2 px-3">IGST</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {report.summary && report.summary.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50">
-                              <td className="py-2 px-3 font-medium">{item.hsnCode}</td>
-                              <td className="py-2 px-3">{item.description}</td>
-                              <td className="py-2 px-3 text-center">{item.uqc}</td>
-                              <td className="py-2 px-3 text-right">{item.totalQuantity.toFixed(2)}</td>
-                              <td className="py-2 px-3 text-right">
-                                ₹{item.taxableValue.toLocaleString('en-IN')}
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                ₹{item.cgst.toLocaleString('en-IN')}
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                ₹{item.sgst.toLocaleString('en-IN')}
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                ₹{item.igst.toLocaleString('en-IN')}
-                              </td>
+                    {report.summary && report.summary.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600">HSN Code</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600">Description</th>
+                              <th className="text-center py-2 px-3 text-xs font-semibold text-gray-600">UQC</th>
+                              <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">Quantity</th>
+                              <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">Value</th>
+                              <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">CGST</th>
+                              <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">SGST</th>
+                              <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600">IGST</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {report.summary.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="py-2 px-3 font-medium">{item.hsnCode}</td>
+                                <td className="py-2 px-3">{item.description}</td>
+                                <td className="py-2 px-3 text-center">{item.uqc}</td>
+                                <td className="py-2 px-3 text-right">{item.totalQuantity.toFixed(2)}</td>
+                                <td className="py-2 px-3 text-right font-medium">
+                                  ₹{item.taxableValue.toLocaleString('en-IN')}
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  ₹{item.cgst.toLocaleString('en-IN')}
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  ₹{item.sgst.toLocaleString('en-IN')}
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  ₹{item.igst.toLocaleString('en-IN')}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm">No HSN data for this period</p>
+                    )}
                   </div>
                 )}
               </>

@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/AddEditProduct.jsx
-// ENHANCED - Add/Edit Product/Service Form with HSN Search
+// ENHANCED - Add/Edit Item Form with HSN Search
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -39,8 +39,8 @@ export default function AddEditProduct() {
       const response = await api.get(`/api/products/${id}`);
       setFormData(response.data);
     } catch (error) {
-      console.error('Error fetching product:', error);
-      alert('Failed to fetch product details');
+      console.error('Error fetching item:', error);
+      alert('Failed to fetch item details');
       navigate('/products');
     }
   };
@@ -52,15 +52,15 @@ export default function AddEditProduct() {
     try {
       if (isEditing) {
         await api.put(`/api/products/${id}`, formData);
-        alert('Product updated successfully');
+        alert('item updated successfully');
       } else {
         await api.post('/api/products', formData);
-        alert('Product created successfully');
+        alert('item created successfully');
       }
       navigate('/products');
     } catch (error) {
-      console.error('Error saving product:', error);
-      alert(error.response?.data?.error || 'Failed to save product');
+      console.error('Error saving item:', error);
+      alert(error.response?.data?.error || 'Failed to save item');
     } finally {
       setLoading(false);
     }
@@ -76,13 +76,13 @@ export default function AddEditProduct() {
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
-            Back to Products
+            Back to Items List
           </button>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isEditing ? 'Edit Product/Service' : 'Add New Product/Service'}
+            {isEditing ? 'Edit Item' : 'Add New Item'}
           </h1>
           <p className="text-gray-600 mt-1">
-            {isEditing ? 'Update product/service details' : 'Add a new product or service to your catalog'}
+            {isEditing ? 'Update Item details' : 'Add a new Item to your catalog'}
           </p>
         </div>
 
@@ -142,7 +142,7 @@ export default function AddEditProduct() {
                   rows={3}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Detailed description of the product/service..."
+                  placeholder="Detailed description of the Item..."
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -198,7 +198,7 @@ export default function AddEditProduct() {
                     <ul className="space-y-1 text-xs">
                       <li>• <strong>Products:</strong> Use HSN codes (e.g., 8471 for Computers)</li>
                       <li>• <strong>Services:</strong> Use SAC codes (e.g., 998314 for IT Services)</li>
-                      <li>• Search by code or product name for quick selection</li>
+                      <li>• Search by code or item name for quick selection</li>
                       <li>• GST rate will auto-fill from the database</li>
                     </ul>
                   </div>
@@ -321,11 +321,11 @@ export default function AddEditProduct() {
                 className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
               />
               <div>
-                <p className="font-medium text-gray-900">Active Product/Service</p>
+                <p className="font-medium text-gray-900">Active Item</p>
                 <p className="text-sm text-gray-600 mt-1">
                   {formData.isActive 
-                    ? '✓ This product/service is available for use in invoices and will appear in the product catalog' 
-                    : '✗ This product/service will not appear in invoice forms or product listings'}
+                    ? '✓ This Item is available for use in invoices and will appear in the catalog' 
+                    : '✗ This Item will not appear in invoice forms or the catalog'}
                 </p>
               </div>
             </label>
@@ -347,7 +347,7 @@ export default function AddEditProduct() {
               className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium transition-colors shadow-sm"
             >
               <Save className="w-4 h-4" />
-              {loading ? 'Saving...' : isEditing ? 'Update Product' : 'Create Product'}
+              {loading ? 'Saving...' : isEditing ? 'Update Item' : 'Create Item'}
             </button>
           </div>
         </form>

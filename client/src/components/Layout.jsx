@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/components/Layout.jsx
-// FIXED: GlobalSearch positioned BEFORE user profile
+// ✅ UPDATED: Added Purchase Orders to main navigation
 // ============================================
 
 import { useState } from "react";
@@ -29,6 +29,13 @@ import {
   FileEdit,
   Receipt,
   Database,
+  ShoppingCart,
+  FileCheck,
+  FileMinus,
+  FilePlus,
+  Truck,
+  ClipboardList,
+  Shield,
 } from "lucide-react";
 
 export default function Layout({ children }) {
@@ -37,6 +44,10 @@ export default function Layout({ children }) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Sales menu state
+  const [salesOpen, setSalesOpen] = useState(true); // Default open
+
   const [reportsOpen, setReportsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -48,26 +59,34 @@ export default function Layout({ children }) {
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Clients", href: "/clients", icon: Users },
-    { name: "Products", href: "/products", icon: Package },
-    { name: "Invoices", href: "/invoices", icon: FileText },
+    { name: "Items", href: "/items", icon: Package },
+    { name: "Purchase Orders", href: "/purchase-orders", icon: ShoppingCart }, // ✅ ADDED HERE
     { name: "Payments", href: "/payments", icon: CreditCard },
-    { name: "Credit/Debit Notes", href: "/credit-debit-notes", icon: FileEdit },
-    {
-      name: "Recurring Invoices",
-      href: "/recurring-invoices",
-      icon: RefreshCw,
-    },
     { name: "Analytics", href: "/analytics", icon: PieChart },
-    { name: "Quotations", href: "/quotations", icon: FileText },
     {
       name: "HSN Codes",
       href: "/hsn-management",
-      icon: Database, // Import Database from lucide-react
+      icon: Database,
     },
+    { name: "Inventory", href: "/inventory", icon: Package },
+    { name: "GRN Management", href: "/grns", icon: Truck },
+    { name: "Audit Trail", href: "/audit-trail", icon: Shield },
+  ];
+
+  // Sales submenu items
+  const salesMenu = [
+    { name: "Quotations", href: "/sales/quotations", icon: ClipboardList },
+    { name: "Tax Invoice", href: "/sales/tax-invoice", icon: FileText },
+    { name: "Pro-Forma Invoice", href: "/sales/proforma", icon: FileCheck },
+    { name: "Recurring Invoices", href: "/sales/recurring", icon: RefreshCw },
+    { name: "Delivery Challan", href: "/sales/delivery-challan", icon: Truck },
+    { name: "Credit Note", href: "/sales/credit-note", icon: FileMinus },
+    { name: "Debit Note", href: "/sales/debit-note", icon: FilePlus },
   ];
 
   const reports = [
-    { name: "GST Reports", href: "/gst-reports", icon: Receipt },
+    { name: "Advanced Reports", href: "/reports", icon: BarChart3 },
+    { name: "GST Reports", href: "/gst-reports", icon: Receipt }, // ✅ KEPT GST REPORTS HERE
     {
       name: "Outstanding Reports",
       href: "/reports/outstanding",
@@ -82,6 +101,11 @@ export default function Layout({ children }) {
       href: "/settings/organization",
       icon: Building2,
     },
+    {
+      name: "Multi-GSTIN", // ✅ ADD THIS
+      href: "/multi-gstin",
+      icon: Building2,
+    },
     { name: "TDS Settings", href: "/settings/tds", icon: Percent },
     {
       name: "WhatsApp Settings",
@@ -93,6 +117,9 @@ export default function Layout({ children }) {
   const isActive = (path) => {
     if (path === "/reports") {
       return location.pathname.startsWith("/reports");
+    }
+    if (path.startsWith("/sales/")) {
+      return location.pathname.startsWith(path);
     }
     return location.pathname === path;
   };
@@ -152,6 +179,52 @@ export default function Layout({ children }) {
             {navigation.map((item) => (
               <NavItem key={item.name} item={item} mobile={true} />
             ))}
+
+            {/* Sales Dropdown */}
+            <div>
+              <button
+                onClick={() => setSalesOpen(!salesOpen)}
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  location.pathname.startsWith("/sales") ||
+                  location.pathname.startsWith("/invoices") ||
+                  location.pathname.startsWith("/quotations") ||
+                  location.pathname.startsWith("/recurring-invoices") ||
+                  location.pathname.startsWith("/credit-debit-notes")
+                    ? "bg-blue-50 text-blue-600 font-medium"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5" />
+                  <span>Sales</span>
+                </div>
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform ${
+                    salesOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {salesOpen && (
+                <div className="mt-2 ml-4 space-y-1">
+                  {salesMenu.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors ${
+                        isActive(item.href)
+                          ? "bg-blue-50 text-blue-600 font-medium"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.name}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Reports Dropdown */}
             <div>
@@ -279,7 +352,6 @@ export default function Layout({ children }) {
 
             <div className="flex-1 lg:hidden"></div>
 
-            {/* ✅ FIXED: GlobalSearch BEFORE user profile */}
             <div className="hidden lg:flex items-center gap-4">
               <GlobalSearch />
 
