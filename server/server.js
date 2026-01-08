@@ -32,6 +32,8 @@ import reportRoutes from './routes/reports.js';
 import auditLogRoutes from './routes/auditLogs.js';
 import threeWayMatchingRoutes from './routes/threeWayMatching.js';
 import smartCategorizationRoutes from './routes/smartCategorization.js';
+import ocrRoutes from './routes/ocr.js';
+import grnRoutes from './routes/grns.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -98,6 +100,8 @@ app.use('/api/reminders', reminderRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/three-way-matching', threeWayMatchingRoutes);
 app.use('/api/smart-categorization', smartCategorizationRoutes);
+app.use('/api/ocr', ocrRoutes);
+app.use('/api/grns', grnRoutes);
 
 // 404 handler
 app.use((req, res) => {

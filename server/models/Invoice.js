@@ -258,20 +258,22 @@ const invoiceSchema = new mongoose.Schema(
     termsConditions: String,
 
     // Quick Notes
-    quickNotes: [{
-      note: {
-        type: String,
-        required: true,
+    quickNotes: [
+      {
+        note: {
+          type: String,
+          required: true,
+        },
+        addedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now,
+        },
       },
-      addedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-      },
-      addedAt: {
-        type: Date,
-        default: Date.now,
-      },
-    }],
+    ],
 
     // GST Calculation Metadata
     gstCalculationMeta: {
@@ -311,7 +313,7 @@ const invoiceSchema = new mongoose.Schema(
         },
         uploadedBy: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: 'User',
+          ref: "User",
         },
         description: String,
       },
@@ -470,12 +472,24 @@ const invoiceSchema = new mongoose.Schema(
       ref: "Organization",
       required: true,
     },
+    selectedGstin: {
+      type: mongoose.Schema.Types.ObjectId,
+      // Reference to a specific GSTIN entry within the organization
+    },
+
+    gstinUsed: {
+      gstin: String,
+      stateCode: String,
+      stateName: String,
+      address: String,
+      tradeName: String,
+    },
     remindersSent: [
       {
         sentAt: { type: Date, default: Date.now },
         sentTo: String,
-        type: { type: String, enum: ['MANUAL', 'AUTO'], default: 'AUTO' },
-        sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        type: { type: String, enum: ["MANUAL", "AUTO"], default: "AUTO" },
+        sentBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       },
     ],
   },
@@ -491,8 +505,8 @@ invoiceSchema.index({ status: 1 });
 invoiceSchema.index({ invoiceDate: 1 });
 invoiceSchema.index({ dueDate: 1 });
 invoiceSchema.index({ shareToken: 1 }, { sparse: true });
-invoiceSchema.index({ 'eInvoice.irn': 1 }, { sparse: true });
-invoiceSchema.index({ 'eWayBill.ewbNumber': 1 }, { sparse: true });
+invoiceSchema.index({ "eInvoice.irn": 1 }, { sparse: true });
+invoiceSchema.index({ "eWayBill.ewbNumber": 1 }, { sparse: true });
 
 // Pre-save hook to update status based on payment
 invoiceSchema.pre("save", function (next) {
@@ -507,6 +521,34 @@ invoiceSchema.pre("save", function (next) {
   } else {
     this.status = "PENDING";
   }
+  next();
+});
+
+invoiceSchema.pre('save', async function(next) {
+  // If selectedGstin is set, populate gstinUsed
+  if (this.selectedGstin && !this.gstinUsed?.gstin) {
+    try {
+      const Organization = mongoose.model('Organization');
+      const org = await Organization.findById(this.organization);
+      
+      if (org && org.gstinEntries) {
+        const gstinEntry = org.gstinEntries.id(this.selectedGstin);
+        
+        if (gstinEntry) {
+          this.gstinUsed = {
+            gstin: gstinEntry.gstin,
+            stateCode: gstinEntry.stateCode,
+            stateName: gstinEntry.stateName,
+            address: gstinEntry.address,
+            tradeName: gstinEntry.tradeName || org.name,
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Error populating gstinUsed:', error);
+    }
+  }
+  
   next();
 });
 

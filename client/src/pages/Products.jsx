@@ -3,10 +3,10 @@
 // FEATURE #28: Products → Items Master List
 // ============================================
 
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Layout from '../components/Layout';
-import api from '../utils/api';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import Layout from "../components/Layout";
+import api from "../utils/api";
 import {
   Plus,
   Search,
@@ -16,14 +16,14 @@ import {
   Package,
   ChevronDown,
   RefreshCw,
-} from 'lucide-react';
+} from "lucide-react";
 
 export default function Products() {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("ALL");
   const [showInactive, setShowInactive] = useState(false);
 
   useEffect(() => {
@@ -32,21 +32,21 @@ export default function Products() {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get('/api/products', {
+      const response = await api.get("/api/products", {
         params: {
-          isActive: !showInactive ? 'true' : undefined,
+          isActive: !showInactive ? "true" : undefined,
         },
       });
       setProducts(response.data || []);
     } catch (error) {
-      console.error('Error fetching items:', error);
+      console.error("Error fetching items:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleCreateProduct = () => {
-    navigate('/items/add');
+    navigate("/items/add");
   };
 
   const handleEditProduct = (product) => {
@@ -54,15 +54,20 @@ export default function Products() {
   };
 
   const handleDeleteProduct = async (productId, productName) => {
-    if (!confirm(`Are you sure you want to deactivate "${productName}"?`)) return;
+    if (!confirm(`Are you sure you want to deactivate "${productName}"?`))
+      return;
 
     try {
       await api.delete(`/api/products/${productId}`);
-      setProducts(products.map((p) => (p._id === productId ? { ...p, isActive: false } : p)));
-      alert('Item deactivated successfully');
+      setProducts(
+        products.map((p) =>
+          p._id === productId ? { ...p, isActive: false } : p
+        )
+      );
+      alert("Item deactivated successfully");
     } catch (error) {
-      console.error('Error deleting item:', error);
-      alert('Failed to deactivate item');
+      console.error("Error deleting item:", error);
+      alert("Failed to deactivate item");
     }
   };
 
@@ -71,11 +76,15 @@ export default function Products() {
 
     try {
       await api.patch(`/api/products/${productId}/restore`);
-      setProducts(products.map((p) => (p._id === productId ? { ...p, isActive: true } : p)));
-      alert('Item restored successfully');
+      setProducts(
+        products.map((p) =>
+          p._id === productId ? { ...p, isActive: true } : p
+        )
+      );
+      alert("Item restored successfully");
     } catch (error) {
-      console.error('Error restoring item:', error);
-      alert('Failed to restore item');
+      console.error("Error restoring item:", error);
+      alert("Failed to restore item");
     }
   };
 
@@ -85,7 +94,7 @@ export default function Products() {
       product.hsnSacCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.category?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesType = filterType === 'ALL' || product.type === filterType;
+    const matchesType = filterType === "ALL" || product.type === filterType;
 
     const matchesActive = showInactive ? true : product.isActive;
 
@@ -94,8 +103,8 @@ export default function Products() {
 
   const stats = {
     total: products.filter((p) => p.isActive).length,
-    products: products.filter((p) => p.type === 'PRODUCT' && p.isActive).length,
-    services: products.filter((p) => p.type === 'SERVICE' && p.isActive).length,
+    products: products.filter((p) => p.type === "PRODUCT" && p.isActive).length,
+    services: products.filter((p) => p.type === "SERVICE" && p.isActive).length,
     inactive: products.filter((p) => !p.isActive).length,
   };
 
@@ -107,7 +116,9 @@ export default function Products() {
           <div>
             {/* ✅ CHANGED: Products → Items */}
             <h1 className="text-2xl font-bold text-gray-900">Items Master</h1>
-            <p className="text-gray-600 text-sm mt-1">Manage your product and service catalog</p>
+            <p className="text-gray-600 text-sm mt-1">
+              Manage your product and service catalog
+            </p>
           </div>
           <button
             onClick={handleCreateProduct}
@@ -125,7 +136,9 @@ export default function Products() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Active</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {stats.total}
+                </p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                 <Package className="w-6 h-6 text-blue-600" />
@@ -137,7 +150,9 @@ export default function Products() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Products</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.products}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {stats.products}
+                </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                 <Package className="w-6 h-6 text-green-600" />
@@ -149,7 +164,9 @@ export default function Products() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Services</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.services}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {stats.services}
+                </p>
               </div>
               <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
                 <Package className="w-6 h-6 text-purple-600" />
@@ -161,7 +178,9 @@ export default function Products() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Inactive</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{stats.inactive}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {stats.inactive}
+                </p>
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                 <Package className="w-6 h-6 text-red-600" />
@@ -225,14 +244,16 @@ export default function Products() {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 {/* ✅ CHANGED: No products → No items */}
-                {searchTerm || filterType !== 'ALL' ? 'No items found' : 'No items yet'}
+                {searchTerm || filterType !== "ALL"
+                  ? "No items found"
+                  : "No items yet"}
               </h3>
               <p className="text-gray-500 mb-6">
-                {searchTerm || filterType !== 'ALL'
-                  ? 'Try adjusting your filters'
-                  : 'Create your first item to get started'}
+                {searchTerm || filterType !== "ALL"
+                  ? "Try adjusting your filters"
+                  : "Create your first item to get started"}
               </p>
-              {!searchTerm && filterType === 'ALL' && (
+              {!searchTerm && filterType === "ALL" && (
                 <button
                   onClick={handleCreateProduct}
                   className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors"
@@ -263,6 +284,9 @@ export default function Products() {
                       Unit
                     </th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase">
+                      Quantity
+                    </th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase">
                       Rate
                     </th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-gray-700 uppercase">
@@ -283,44 +307,56 @@ export default function Products() {
                   {filteredProducts.map((product) => (
                     <tr key={product._id} className="hover:bg-gray-50">
                       <td className="py-3 px-4">
-                        <p className="font-medium text-gray-900">{product.name}</p>
+                        <p className="font-medium text-gray-900">
+                          {product.name}
+                        </p>
                         {product.description && (
-                          <p className="text-xs text-gray-500 mt-1">{product.description}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {product.description}
+                          </p>
                         )}
                       </td>
                       <td className="py-3 px-4">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-full ${
-                            product.type === 'PRODUCT'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-purple-100 text-purple-700'
+                            product.type === "PRODUCT"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-purple-100 text-purple-700"
                           }`}
                         >
                           {product.type}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
-                        {product.hsnSacCode || '-'}
+                        {product.hsnSacCode || "-"}
                       </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{product.unit}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {product.unit}
+                      </td>
                       <td className="py-3 px-4 text-right text-sm font-medium text-gray-900">
-                        ₹{product.rate.toLocaleString('en-IN')}
+                        {product.type === "PRODUCT"
+                          ? product.currentStock ?? 0
+                          : "—"}
+                      </td>
+
+                      <td className="py-3 px-4 text-right text-sm font-medium text-gray-900">
+                        ₹{product.rate.toLocaleString("en-IN")}
                       </td>
                       <td className="py-3 px-4 text-center text-sm text-gray-600">
                         {product.gstRate}%
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
-                        {product.category || '-'}
+                        {product.category || "-"}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-full ${
                             product.isActive
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
                           }`}
                         >
-                          {product.isActive ? 'Active' : 'Inactive'}
+                          {product.isActive ? "Active" : "Inactive"}
                         </span>
                       </td>
                       <td className="py-3 px-4">
@@ -335,7 +371,9 @@ export default function Products() {
                                 <Edit className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteProduct(product._id, product.name)}
+                                onClick={() =>
+                                  handleDeleteProduct(product._id, product.name)
+                                }
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                 title="Deactivate"
                               >
@@ -344,7 +382,9 @@ export default function Products() {
                             </>
                           ) : (
                             <button
-                              onClick={() => handleRestoreProduct(product._id, product.name)}
+                              onClick={() =>
+                                handleRestoreProduct(product._id, product.name)
+                              }
                               className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                               title="Restore"
                             >

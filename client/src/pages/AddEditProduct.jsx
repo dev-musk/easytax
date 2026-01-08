@@ -3,12 +3,12 @@
 // ENHANCED - Add/Edit Item Form with HSN Search
 // ============================================
 
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import Layout from '../components/Layout';
-import HSNSearch from '../components/HSNSearch';
-import api from '../utils/api';
-import { ArrowLeft, Save } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import Layout from "../components/Layout";
+import HSNSearch from "../components/HSNSearch";
+import api from "../utils/api";
+import { ArrowLeft, Save } from "lucide-react";
 
 export default function AddEditProduct() {
   const navigate = useNavigate();
@@ -17,14 +17,19 @@ export default function AddEditProduct() {
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    type: 'PRODUCT',
-    hsnSacCode: '',
-    description: '',
-    unit: 'PCS',
+    name: "",
+    type: "PRODUCT",
+    hsnSacCode: "",
+    description: "",
+    unit: "PCS",
     rate: 0,
     gstRate: 18,
-    category: '',
+    category: "",
+    currentStock: 0,
+    trackInventory: true,
+    minStockLevel: 0, // ✅ ADD THIS
+    maxStockLevel: 0, // ✅ ADD THIS
+    reorderLevel: 0, // ✅ ADD THIS
     isActive: true,
   });
 
@@ -37,11 +42,14 @@ export default function AddEditProduct() {
   const fetchProduct = async () => {
     try {
       const response = await api.get(`/api/products/${id}`);
-      setFormData(response.data);
+      setFormData({
+        ...response.data,
+        trackInventory: response.data.trackInventory ?? true, // ✅ ADD THIS
+      });
     } catch (error) {
-      console.error('Error fetching item:', error);
-      alert('Failed to fetch item details');
-      navigate('/products');
+      console.error("Error fetching item:", error);
+      alert("Failed to fetch item details");
+      navigate("/products");
     }
   };
 
@@ -52,15 +60,15 @@ export default function AddEditProduct() {
     try {
       if (isEditing) {
         await api.put(`/api/products/${id}`, formData);
-        alert('item updated successfully');
+        alert("item updated successfully");
       } else {
-        await api.post('/api/products', formData);
-        alert('item created successfully');
+        await api.post("/api/products", formData);
+        alert("item created successfully");
       }
-      navigate('/products');
+      navigate("/products");
     } catch (error) {
-      console.error('Error saving item:', error);
-      alert(error.response?.data?.error || 'Failed to save item');
+      console.error("Error saving item:", error);
+      alert(error.response?.data?.error || "Failed to save item");
     } finally {
       setLoading(false);
     }
@@ -72,25 +80,29 @@ export default function AddEditProduct() {
         {/* Header */}
         <div className="mb-6">
           <button
-            onClick={() => navigate('/products')}
+            onClick={() => navigate("/products")}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
             Back to Items List
           </button>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isEditing ? 'Edit Item' : 'Add New Item'}
+            {isEditing ? "Edit Item" : "Add New Item"}
           </h1>
           <p className="text-gray-600 mt-1">
-            {isEditing ? 'Update Item details' : 'Add a new Item to your catalog'}
+            {isEditing
+              ? "Update Item details"
+              : "Add a new Item to your catalog"}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Details */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Basic Details</h2>
-            
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Basic Details
+            </h2>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -100,7 +112,9 @@ export default function AddEditProduct() {
                   type="text"
                   required
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   placeholder="e.g., Website Design Service"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -113,7 +127,9 @@ export default function AddEditProduct() {
                 <select
                   required
                   value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, type: e.target.value })
+                  }
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="PRODUCT">Product</option>
@@ -128,7 +144,9 @@ export default function AddEditProduct() {
                 <input
                   type="text"
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
                   placeholder="e.g., IT Services, Hardware"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -141,7 +159,9 @@ export default function AddEditProduct() {
                 <textarea
                   rows={3}
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   placeholder="Detailed description of the Item..."
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -151,17 +171,21 @@ export default function AddEditProduct() {
 
           {/* HSN/SAC Code - Enhanced Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">HSN/SAC Code</h2>
-            
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              HSN/SAC Code
+            </h2>
+
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-5">
               <label className="block text-sm font-medium text-gray-700 mb-3">
                 HSN/SAC Code
               </label>
-              
+
               {/* ✅ Enhanced HSN Search Component */}
               <HSNSearch
                 value={formData.hsnSacCode}
-                onChange={(code) => setFormData({ ...formData, hsnSacCode: code })}
+                onChange={(code) =>
+                  setFormData({ ...formData, hsnSacCode: code })
+                }
                 itemType={formData.type}
                 onSelect={(hsn) => {
                   // Auto-fill HSN code
@@ -181,7 +205,7 @@ export default function AddEditProduct() {
                 }}
                 required={false}
                 placeholder={
-                  formData.type === 'SERVICE'
+                  formData.type === "SERVICE"
                     ? "Search or enter SAC code (e.g., 998314)"
                     : "Search or enter HSN code (e.g., 8471)"
                 }
@@ -196,8 +220,14 @@ export default function AddEditProduct() {
                   <div className="text-sm text-blue-700">
                     <p className="font-semibold mb-1">HSN/SAC Code Guide:</p>
                     <ul className="space-y-1 text-xs">
-                      <li>• <strong>Products:</strong> Use HSN codes (e.g., 8471 for Computers)</li>
-                      <li>• <strong>Services:</strong> Use SAC codes (e.g., 998314 for IT Services)</li>
+                      <li>
+                        • <strong>Products:</strong> Use HSN codes (e.g., 8471
+                        for Computers)
+                      </li>
+                      <li>
+                        • <strong>Services:</strong> Use SAC codes (e.g., 998314
+                        for IT Services)
+                      </li>
                       <li>• Search by code or item name for quick selection</li>
                       <li>• GST rate will auto-fill from the database</li>
                     </ul>
@@ -209,9 +239,12 @@ export default function AddEditProduct() {
 
           {/* Pricing & Tax Details */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Pricing & Tax Details</h2>
-            
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Pricing & Tax Details
+            </h2>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Unit of Measurement */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Unit of Measurement <span className="text-red-500">*</span>
@@ -219,7 +252,9 @@ export default function AddEditProduct() {
                 <select
                   required
                   value={formData.unit}
-                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, unit: e.target.value })
+                  }
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="PCS">Pieces</option>
@@ -235,6 +270,189 @@ export default function AddEditProduct() {
                 </select>
               </div>
 
+              {/* ✅ Opening Quantity */}
+              {formData.type === "PRODUCT" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Opening Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.currentStock}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        currentStock: parseInt(e.target.value) || 0,
+                      })
+                    }
+                    placeholder="0"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Initial stock quantity (can be adjusted later)
+                  </p>
+                </div>
+              )}
+
+              {/* ✅ TRACK INVENTORY CHECKBOX */}
+              {formData.type === "PRODUCT" && (
+                <div className="col-span-2">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-4">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.trackInventory ?? true}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            trackInventory: e.target.checked,
+                          })
+                        }
+                        className="w-5 h-5 text-green-600 rounded focus:ring-2 focus:ring-green-500 mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <p className="font-semibold text-green-900 mb-1">
+                          📦 Track Inventory for This Product
+                        </p>
+                        <p className="text-sm text-green-700">
+                          {formData.trackInventory ?? true
+                            ? "✓ Stock will be automatically reduced when invoices are created and restored when invoices are deleted/cancelled"
+                            : "✗ Stock will NOT be tracked - useful for made-to-order items, services, or unlimited stock items"}
+                        </p>
+                        <div className="mt-2 text-xs text-green-600 bg-white rounded p-2 border border-green-200">
+                          <p className="font-medium mb-1">
+                            What happens when enabled:
+                          </p>
+                          <ul className="space-y-1 ml-4 list-disc">
+                            <li>
+                              Creating an invoice reduces stock automatically
+                            </li>
+                            <li>Deleting an invoice restores stock</li>
+                            <li>Stock validation prevents overselling</li>
+                            <li>View stock movements in item history</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ INVENTORY LEVELS SECTION - CONDITIONAL */}
+              {formData.type === "PRODUCT" && formData.trackInventory && (
+                <div className="col-span-2 bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-300 rounded-lg p-5">
+                  <h3 className="text-sm font-semibold text-indigo-900 mb-4">
+                    📊 Inventory Level Settings
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Min Stock Level */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Min Stock Level
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.minStockLevel || 0}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            minStockLevel: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="e.g., 5"
+                        className="w-full px-4 py-2.5 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      />
+                      <p className="text-xs text-indigo-600 mt-1">
+                        Minimum stock to maintain
+                      </p>
+                    </div>
+
+                    {/* Reorder Level */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Reorder Level <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.reorderLevel || 0}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            reorderLevel: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="e.g., 10"
+                        className="w-full px-4 py-2.5 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      />
+                      <p className="text-xs text-indigo-600 mt-1">
+                        ⚠️ Alert when stock ≤ this level
+                      </p>
+                    </div>
+
+                    {/* Max Stock Level */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Max Stock Level
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.maxStockLevel || 0}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            maxStockLevel: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="e.g., 50"
+                        className="w-full px-4 py-2.5 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      />
+                      <p className="text-xs text-indigo-600 mt-1">
+                        📦 Alert when stock &gt; this level
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Info Box */}
+                  <div className="mt-4 bg-white rounded-lg p-4 border border-indigo-200">
+                    <p className="text-xs font-semibold text-indigo-900 mb-2">
+                      💡 How These Levels Work:
+                    </p>
+                    <ul className="space-y-1 text-xs text-indigo-700">
+                      <li>
+                        <strong>Reorder Level:</strong> When stock drops to or
+                        below this, you'll see a LOW STOCK alert on the
+                        inventory dashboard
+                      </li>
+                      <li>
+                        <strong>Min Stock Level:</strong> The absolute minimum
+                        you want to maintain
+                      </li>
+                      <li>
+                        <strong>Max Stock Level:</strong> When stock exceeds
+                        this, you'll see an OVERSTOCK warning
+                      </li>
+                    </ul>
+                    <div className="mt-3 p-3 bg-indigo-100 rounded border border-indigo-200">
+                      <p className="text-xs text-indigo-900">
+                        <strong>Example:</strong> Min=5, Reorder=10, Max=50
+                        <br />
+                        Stock 3 → 🔴 Low Alert (below min)
+                        <br />
+                        Stock 8 → 🟡 Reorder Alert (below reorder)
+                        <br />
+                        Stock 60 → 🟠 Overstock Alert (above max)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Default Rate */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Default Rate (₹) <span className="text-red-500">*</span>
@@ -245,7 +463,12 @@ export default function AddEditProduct() {
                   min="0"
                   step="0.01"
                   value={formData.rate}
-                  onChange={(e) => setFormData({ ...formData, rate: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      rate: parseFloat(e.target.value) || 0,
+                    })
+                  }
                   placeholder="0.00"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -254,6 +477,7 @@ export default function AddEditProduct() {
                 </p>
               </div>
 
+              {/* GST Rate */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   GST Rate (%) <span className="text-red-500">*</span>
@@ -261,7 +485,12 @@ export default function AddEditProduct() {
                 <select
                   required
                   value={formData.gstRate}
-                  onChange={(e) => setFormData({ ...formData, gstRate: parseFloat(e.target.value) })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      gstRate: parseFloat(e.target.value),
+                    })
+                  }
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="0">0% - Nil Rated</option>
@@ -280,28 +509,43 @@ export default function AddEditProduct() {
 
             {/* Pricing Summary */}
             <div className="mt-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Pricing Summary</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                Pricing Summary
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div className="bg-white rounded-lg p-3 border border-blue-200">
                   <p className="text-gray-600 text-xs mb-1">Base Rate</p>
                   <p className="font-bold text-lg text-gray-900">
-                    ₹{formData.rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹
+                    {formData.rate.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                    })}
                   </p>
                   <p className="text-xs text-gray-500">per {formData.unit}</p>
                 </div>
-                
+
                 <div className="bg-white rounded-lg p-3 border border-blue-200">
                   <p className="text-gray-600 text-xs mb-1">GST Amount</p>
                   <p className="font-bold text-lg text-orange-600">
-                    ₹{((formData.rate * formData.gstRate) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹
+                    {((formData.rate * formData.gstRate) / 100).toLocaleString(
+                      "en-IN",
+                      { minimumFractionDigits: 2 }
+                    )}
                   </p>
-                  <p className="text-xs text-gray-500">{formData.gstRate}% GST</p>
+                  <p className="text-xs text-gray-500">
+                    {formData.gstRate}% GST
+                  </p>
                 </div>
-                
+
                 <div className="bg-blue-600 rounded-lg p-3 text-white">
                   <p className="text-blue-100 text-xs mb-1">Total Price</p>
                   <p className="font-bold text-xl">
-                    ₹{(formData.rate + (formData.rate * formData.gstRate) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹
+                    {(
+                      formData.rate +
+                      (formData.rate * formData.gstRate) / 100
+                    ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                   </p>
                   <p className="text-xs text-blue-100">incl. GST</p>
                 </div>
@@ -312,20 +556,22 @@ export default function AddEditProduct() {
           {/* Status */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Status</h2>
-            
+
             <label className="flex items-start gap-3 cursor-pointer p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
               <input
                 type="checkbox"
                 checked={formData.isActive}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                onChange={(e) =>
+                  setFormData({ ...formData, isActive: e.target.checked })
+                }
                 className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
               />
               <div>
                 <p className="font-medium text-gray-900">Active Item</p>
                 <p className="text-sm text-gray-600 mt-1">
-                  {formData.isActive 
-                    ? '✓ This Item is available for use in invoices and will appear in the catalog' 
-                    : '✗ This Item will not appear in invoice forms or the catalog'}
+                  {formData.isActive
+                    ? "✓ This Item is available for use in invoices and will appear in the catalog"
+                    : "✗ This Item will not appear in invoice forms or the catalog"}
                 </p>
               </div>
             </label>
@@ -335,7 +581,7 @@ export default function AddEditProduct() {
           <div className="flex gap-3 justify-end bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <button
               type="button"
-              onClick={() => navigate('/products')}
+              onClick={() => navigate("/products")}
               className="px-6 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
               disabled={loading}
             >
@@ -347,7 +593,11 @@ export default function AddEditProduct() {
               className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium transition-colors shadow-sm"
             >
               <Save className="w-4 h-4" />
-              {loading ? 'Saving...' : isEditing ? 'Update Item' : 'Create Item'}
+              {loading
+                ? "Saving..."
+                : isEditing
+                ? "Update Item"
+                : "Create Item"}
             </button>
           </div>
         </form>

@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/pages/PurchaseOrders.jsx
-// ✅ FEATURE #16: PO Management - List View
+// ✅ FEATURE #16: PO Management - WITH APPROVE BUTTON
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -17,6 +17,8 @@ import {
   X,
   TrendingUp,
   Package,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 
 export default function PurchaseOrders() {
@@ -65,6 +67,41 @@ export default function PurchaseOrders() {
     navigate(`/purchase-orders/view/${poId}`);
   };
 
+  const handleApprovePO = async (poId, e) => {
+    e.stopPropagation();
+    
+    if (!confirm('Are you sure you want to approve this Purchase Order?')) {
+      return;
+    }
+
+    try {
+      await api.patch(`/api/purchase-orders/${poId}/approve`);
+      alert('Purchase Order approved successfully');
+      fetchPOs();
+      fetchStats();
+    } catch (error) {
+      console.error('Error approving PO:', error);
+      alert(error.response?.data?.error || 'Failed to approve Purchase Order');
+    }
+  };
+
+  const handleCancelPO = async (poId, e) => {
+    e.stopPropagation();
+    
+    const reason = prompt('Enter reason for cancellation (optional):');
+    if (reason === null) return; // User clicked cancel
+
+    try {
+      await api.patch(`/api/purchase-orders/${poId}/cancel`, { reason });
+      alert('Purchase Order cancelled successfully');
+      fetchPOs();
+      fetchStats();
+    } catch (error) {
+      console.error('Error cancelling PO:', error);
+      alert(error.response?.data?.error || 'Failed to cancel Purchase Order');
+    }
+  };
+
   const handleClearSearch = () => {
     setSearchTerm('');
   };
@@ -72,6 +109,8 @@ export default function PurchaseOrders() {
   const statusColors = {
     DRAFT: 'bg-gray-100 text-gray-700',
     PENDING: 'bg-yellow-100 text-yellow-700',
+    APPROVED: 'bg-green-100 text-green-700',
+    RECEIVING: 'bg-blue-100 text-blue-700',
     PARTIALLY_RECEIVED: 'bg-blue-100 text-blue-700',
     RECEIVED: 'bg-green-100 text-green-700',
     PARTIALLY_PAID: 'bg-orange-100 text-orange-700',
@@ -122,7 +161,7 @@ export default function PurchaseOrders() {
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-600">Pending</p>
+                <p className="text-sm text-gray-600">Pending Approval</p>
                 <FileText className="w-5 h-5 text-yellow-600" />
               </div>
               <p className="text-3xl font-bold text-yellow-600">
@@ -164,7 +203,9 @@ export default function PurchaseOrders() {
               >
                 <option value="ALL">All Status</option>
                 <option value="DRAFT">Draft</option>
-                <option value="PENDING">Pending</option>
+                <option value="PENDING">Pending Approval</option>
+                <option value="APPROVED">Approved</option>
+                <option value="RECEIVING">Receiving</option>
                 <option value="PARTIALLY_RECEIVED">Partially Received</option>
                 <option value="RECEIVED">Received</option>
                 <option value="PARTIALLY_PAID">Partially Paid</option>
@@ -216,6 +257,8 @@ export default function PurchaseOrders() {
                 po={po}
                 statusColors={statusColors}
                 onView={handleViewPO}
+                onApprove={handleApprovePO}
+                onCancel={handleCancelPO}
               />
             ))}
           </div>
@@ -225,7 +268,7 @@ export default function PurchaseOrders() {
   );
 }
 
-function POCard({ po, statusColors, onView }) {
+function POCard({ po, statusColors, onView, onApprove, onCancel }) {
   return (
     <div
       onClick={() => onView(po._id)}
@@ -256,19 +299,53 @@ function POCard({ po, statusColors, onView }) {
               {new Date(po.expectedDeliveryDate).toLocaleDateString('en-IN')}
             </p>
           )}
+
+          {po.approvedBy && (
+            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+              <CheckCircle className="w-3 h-3" />
+              Approved by {po.approvedBy.name} on{' '}
+              {new Date(po.approvedAt).toLocaleDateString('en-IN')}
+            </p>
+          )}
         </div>
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onView(po._id);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-          title="View details"
-        >
-          <Eye className="w-4 h-4" />
-          View Details
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Approve Button - Only show for PENDING or DRAFT status */}
+          {(po.status === 'PENDING' || po.status === 'DRAFT') && (
+            <button
+              onClick={(e) => onApprove(po._id, e)}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+              title="Approve PO"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Approve
+            </button>
+          )}
+
+          {/* Cancel Button - Don't show for already cancelled or received POs */}
+          {!['CANCELLED', 'RECEIVED', 'PAID'].includes(po.status) && (
+            <button
+              onClick={(e) => onCancel(po._id, e)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+              title="Cancel PO"
+            >
+              <XCircle className="w-4 h-4" />
+              Cancel
+            </button>
+          )}
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onView(po._id);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+            title="View details"
+          >
+            <Eye className="w-4 h-4" />
+            View
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">

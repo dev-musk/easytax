@@ -3,13 +3,13 @@
 // ✅ FEATURE #30: ITEM SCANNING/OCR
 // ============================================
 
-import { useState, useRef, useEffect } from 'react';
-import { Camera, X, Search, Package } from 'lucide-react';
-import api from '../utils/api';
+import { useState, useRef, useEffect } from "react";
+import { Camera, X, Search, Package } from "lucide-react";
+import api from "../utils/api";
 
 export default function ItemScanner({ onItemScanned, onClose }) {
   const [scanning, setScanning] = useState(false);
-  const [manualCode, setManualCode] = useState('');
+  const [manualCode, setManualCode] = useState("");
   const [error, setError] = useState(null);
   const [cameraPermission, setCameraPermission] = useState(null);
   const videoRef = useRef(null);
@@ -25,11 +25,11 @@ export default function ItemScanner({ onItemScanned, onClose }) {
 
   const checkCameraPermission = async () => {
     try {
-      const result = await navigator.permissions.query({ name: 'camera' });
+      const result = await navigator.permissions.query({ name: "camera" });
       setCameraPermission(result.state);
     } catch (error) {
-      console.log('Permission API not supported');
-      setCameraPermission('prompt');
+      console.log("Permission API not supported");
+      setCameraPermission("prompt");
     }
   };
 
@@ -37,19 +37,21 @@ export default function ItemScanner({ onItemScanned, onClose }) {
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }, // Use back camera on mobile
+        video: { facingMode: "environment" }, // Use back camera on mobile
       });
-      
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
       setScanning(true);
-      setCameraPermission('granted');
+      setCameraPermission("granted");
     } catch (error) {
-      console.error('Camera access error:', error);
-      setError('Camera access denied. Please enable camera permission in your browser settings.');
-      setCameraPermission('denied');
+      console.error("Camera access error:", error);
+      setError(
+        "Camera access denied. Please enable camera permission in your browser settings."
+      );
+      setCameraPermission("denied");
     }
   };
 
@@ -67,45 +69,49 @@ export default function ItemScanner({ onItemScanned, onClose }) {
   const captureImage = () => {
     if (!videoRef.current) return;
 
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     ctx.drawImage(videoRef.current, 0, 0);
 
     // Convert to base64
-    const imageData = canvas.toDataURL('image/jpeg', 0.8);
-    
+    const imageData = canvas.toDataURL("image/jpeg", 0.8);
+
     // In production, send to OCR API
     // For now, show success and allow manual entry
-    alert('Image captured! OCR processing would happen here. Please enter barcode manually for now.');
+    alert(
+      "Image captured! OCR processing would happen here. Please enter barcode manually for now."
+    );
     stopCamera();
   };
 
   const handleManualLookup = async () => {
     if (!manualCode.trim()) {
-      setError('Please enter a barcode/SKU');
+      setError("Please enter a barcode/SKU");
       return;
     }
 
     try {
       setError(null);
-      
-      // Search for product by barcode or SKU
-      const response = await api.get('/api/products/search', {
-        params: { barcode: manualCode.trim() },
+
+      // ✅ FEATURE #30: Use OCR lookup API
+      const response = await api.get("/api/ocr/lookup", {
+        params: { code: manualCode.trim() },
       });
 
-      if (response.data && response.data.length > 0) {
-        const product = response.data[0];
+      if (response.data.found) {
+        const product = response.data.product;
         onItemScanned(product);
         onClose();
       } else {
-        setError(`No item found with barcode: ${manualCode}`);
+        setError(
+          response.data.message || `No item found with code: ${manualCode}`
+        );
       }
     } catch (error) {
-      console.error('Lookup error:', error);
-      setError('Failed to find item. Try manual entry instead.');
+      console.error("Lookup error:", error);
+      setError("Failed to find item. Try manual entry instead.");
     }
   };
 
@@ -138,11 +144,12 @@ export default function ItemScanner({ onItemScanned, onClose }) {
 
         <div className="p-6 space-y-6">
           {/* Camera Permission Status */}
-          {cameraPermission === 'denied' && (
+          {cameraPermission === "denied" && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <p className="text-sm text-red-700">
-                Camera access is blocked. Please enable camera permission in your browser
-                settings to use the scanner. You can still enter barcodes manually below.
+                Camera access is blocked. Please enable camera permission in
+                your browser settings to use the scanner. You can still enter
+                barcodes manually below.
               </p>
             </div>
           )}
@@ -179,7 +186,7 @@ export default function ItemScanner({ onItemScanned, onClose }) {
           ) : (
             <button
               onClick={startCamera}
-              disabled={cameraPermission === 'denied'}
+              disabled={cameraPermission === "denied"}
               className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Camera className="w-12 h-12 text-gray-400 mx-auto mb-3" />
@@ -218,7 +225,7 @@ export default function ItemScanner({ onItemScanned, onClose }) {
                   setError(null);
                 }}
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     handleManualLookup();
                   }
                 }}
@@ -252,12 +259,19 @@ export default function ItemScanner({ onItemScanned, onClose }) {
                   How to use:
                 </p>
                 <ul className="text-xs text-blue-700 space-y-1">
-                  <li>• Click "Start Camera" to scan barcodes using your device camera</li>
-                  <li>• Or enter the barcode/SKU manually and click "Search"</li>
-                  <li>• Item details will be automatically filled in the form</li>
                   <li>
-                    • Note: OCR feature requires camera permission and works best in good
-                    lighting
+                    • Click "Start Camera" to scan barcodes using your device
+                    camera
+                  </li>
+                  <li>
+                    • Or enter the barcode/SKU manually and click "Search"
+                  </li>
+                  <li>
+                    • Item details will be automatically filled in the form
+                  </li>
+                  <li>
+                    • Note: OCR feature requires camera permission and works
+                    best in good lighting
                   </li>
                 </ul>
               </div>

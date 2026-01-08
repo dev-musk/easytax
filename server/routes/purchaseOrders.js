@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/routes/purchaseOrders.js
-// ✅ FEATURE #16: PO Management Routes
+// ✅ FEATURE #16: PO Management Routes - WITH APPROVE
 // ============================================
 
 import express from 'express';
@@ -44,11 +44,13 @@ router.get('/', async (req, res) => {
       })
         .populate('vendor', 'companyName email gstin')
         .populate('createdBy', 'name email')
+        .populate('approvedBy', 'name email')
         .sort({ createdAt: -1 });
     } else {
       pos = await PurchaseOrder.find(filter)
         .populate('vendor', 'companyName email gstin')
         .populate('createdBy', 'name email')
+        .populate('approvedBy', 'name email')
         .sort({ createdAt: -1 });
     }
 
@@ -71,6 +73,7 @@ router.get('/:id', async (req, res) => {
     })
       .populate('vendor')
       .populate('createdBy', 'name email')
+      .populate('approvedBy', 'name email')
       .populate('payments.recordedBy', 'name email')
       .populate('linkedInvoices.invoice');
 
@@ -130,6 +133,94 @@ router.post('/', async (req, res) => {
   }
 });
 
+// ✅ NEW ROUTE: Approve PO
+router.patch('/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const po = await PurchaseOrder.findOne({
+      _id: id,
+      organization: organizationId,
+    });
+
+    if (!po) {
+      return res.status(404).json({ error: 'Purchase Order not found' });
+    }
+
+    if (po.status === 'APPROVED') {
+      return res.status(400).json({ error: 'Purchase Order is already approved' });
+    }
+
+    if (po.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'Cannot approve a cancelled Purchase Order' });
+    }
+
+    // Update status to APPROVED
+    po.status = 'APPROVED';
+    po.approvedBy = req.user.id;
+    po.approvedAt = new Date();
+
+    await po.save();
+
+    const updatedPO = await PurchaseOrder.findById(po._id)
+      .populate('vendor')
+      .populate('createdBy', 'name email')
+      .populate('approvedBy', 'name email');
+
+    res.json(updatedPO);
+  } catch (error) {
+    console.error('Error approving PO:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW ROUTE: Cancel PO
+router.patch('/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const organizationId = req.user.organizationId;
+
+    const po = await PurchaseOrder.findOne({
+      _id: id,
+      organization: organizationId,
+    });
+
+    if (!po) {
+      return res.status(404).json({ error: 'Purchase Order not found' });
+    }
+
+    if (po.status === 'CANCELLED') {
+      return res.status(400).json({ error: 'Purchase Order is already cancelled' });
+    }
+
+    // Check if any items have been received
+    const hasReceived = po.items.some(item => item.receivedQuantity > 0);
+    if (hasReceived) {
+      return res.status(400).json({ 
+        error: 'Cannot cancel Purchase Order with received items. Please create a return instead.' 
+      });
+    }
+
+    po.status = 'CANCELLED';
+    if (reason) {
+      po.notes = (po.notes ? po.notes + '\n\n' : '') + `Cancelled: ${reason}`;
+    }
+
+    await po.save();
+
+    const updatedPO = await PurchaseOrder.findById(po._id)
+      .populate('vendor')
+      .populate('createdBy', 'name email');
+
+    res.json(updatedPO);
+  } catch (error) {
+    console.error('Error cancelling PO:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update PO
 router.put('/:id', async (req, res) => {
   try {
@@ -137,19 +228,40 @@ router.put('/:id', async (req, res) => {
     const organizationId = req.user.organizationId;
     const data = req.body;
 
-    const po = await PurchaseOrder.findOneAndUpdate(
-      { _id: id, organization: organizationId },
-      data,
-      { new: true }
-    )
-      .populate('vendor')
-      .populate('createdBy', 'name email');
+    const po = await PurchaseOrder.findOne({
+      _id: id,
+      organization: organizationId,
+    });
 
     if (!po) {
       return res.status(404).json({ error: 'Purchase Order not found' });
     }
 
-    res.json(po);
+    // Prevent editing if already approved or has received items
+    if (po.status === 'APPROVED' || po.status === 'RECEIVING') {
+      const hasReceived = po.items.some(item => item.receivedQuantity > 0);
+      if (hasReceived) {
+        return res.status(400).json({ 
+          error: 'Cannot edit Purchase Order with received items' 
+        });
+      }
+    }
+
+    // Update fields
+    Object.keys(data).forEach(key => {
+      if (data[key] !== undefined && key !== 'status') {
+        po[key] = data[key];
+      }
+    });
+
+    await po.save();
+
+    const updatedPO = await PurchaseOrder.findById(po._id)
+      .populate('vendor')
+      .populate('createdBy', 'name email')
+      .populate('approvedBy', 'name email');
+
+    res.json(updatedPO);
   } catch (error) {
     console.error('Error updating PO:', error);
     res.status(500).json({ error: error.message });
@@ -162,7 +274,7 @@ router.delete('/:id', async (req, res) => {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
 
-    const po = await PurchaseOrder.findOneAndDelete({
+    const po = await PurchaseOrder.findOne({
       _id: id,
       organization: organizationId,
     });
@@ -170,6 +282,22 @@ router.delete('/:id', async (req, res) => {
     if (!po) {
       return res.status(404).json({ error: 'Purchase Order not found' });
     }
+
+    // Prevent deletion if approved or has received items
+    if (po.status === 'APPROVED' || po.status === 'RECEIVING') {
+      return res.status(400).json({ 
+        error: 'Cannot delete an approved Purchase Order. Please cancel it instead.' 
+      });
+    }
+
+    const hasReceived = po.items.some(item => item.receivedQuantity > 0);
+    if (hasReceived) {
+      return res.status(400).json({ 
+        error: 'Cannot delete Purchase Order with received items' 
+      });
+    }
+
+    await po.deleteOne();
 
     res.json({ message: 'Purchase Order deleted successfully' });
   } catch (error) {

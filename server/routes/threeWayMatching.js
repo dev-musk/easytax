@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/routes/threeWayMatching.js
-// ✅ FEATURE #46: THREE-WAY MATCHING ROUTES
+// ✅ FEATURE #46: THREE-WAY MATCHING - FIXED VERSION
 // ============================================
 
 import express from 'express';
@@ -11,7 +11,6 @@ import Invoice from '../models/Invoice.js';
 import mongoose from 'mongoose';
 
 const router = express.Router();
-
 router.use(protect);
 
 // ============================================
@@ -24,6 +23,11 @@ router.post('/match', async (req, res) => {
     const { poId, grnId, invoiceId } = req.body;
     const organizationId = req.user.organizationId;
 
+    console.log('\n🔍 THREE-WAY MATCHING: Starting...');
+    console.log(`   PO: ${poId}`);
+    console.log(`   GRN: ${grnId}`);
+    console.log(`   Invoice: ${invoiceId}`);
+
     // Fetch all three documents
     const [po, grn, invoice] = await Promise.all([
       PurchaseOrder.findOne({ _id: poId, organization: organizationId }),
@@ -32,36 +36,45 @@ router.post('/match', async (req, res) => {
     ]);
 
     if (!po || !grn || !invoice) {
+      console.log('   ❌ One or more documents not found');
       return res.status(404).json({ error: 'One or more documents not found' });
     }
+
+    console.log('   ✅ All documents found');
 
     // ✅ PERFORM THREE-WAY MATCHING
     const matchingResult = await performThreeWayMatch(po, grn, invoice);
 
-    // Update documents with matching status
-    if (matchingResult.overallStatus === 'MATCHED') {
-      grn.matchingStatus = 'MATCHED';
-      grn.linkedInvoice = invoice._id;
-      grn.invoiceNumber = invoice.invoiceNumber;
-      grn.invoiceMatchDate = new Date();
-      await grn.save();
+    console.log(`   📊 Matching Result: ${matchingResult.overallStatus}`);
+    console.log(`   📊 Discrepancies: ${matchingResult.discrepancies.length}`);
 
+    // Update GRN with matching status
+    grn.matchingStatus = matchingResult.overallStatus;
+    grn.hasDiscrepancies = matchingResult.discrepancies.length > 0;
+    grn.discrepancies = matchingResult.discrepancies;
+    grn.linkedInvoice = invoice._id;
+    grn.invoiceNumber = invoice.invoiceNumber;
+    grn.invoiceMatchDate = new Date();
+    await grn.save();
+
+    console.log('   ✅ GRN updated with status:', matchingResult.overallStatus);
+
+    // Update PO - add invoice to linked invoices if not already there
+    const existingLink = po.linkedInvoices?.find(
+      li => li.invoice?.toString() === invoice._id.toString()
+    );
+    
+    if (!existingLink) {
+      if (!po.linkedInvoices) po.linkedInvoices = [];
       po.linkedInvoices.push({
         invoice: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
       });
       await po.save();
-    } else if (matchingResult.overallStatus === 'PARTIALLY_MATCHED') {
-      grn.matchingStatus = 'PARTIALLY_MATCHED';
-      grn.hasDiscrepancies = true;
-      grn.discrepancies = matchingResult.discrepancies;
-      await grn.save();
-    } else {
-      grn.matchingStatus = 'MISMATCHED';
-      grn.hasDiscrepancies = true;
-      grn.discrepancies = matchingResult.discrepancies;
-      await grn.save();
+      console.log('   ✅ Invoice linked to PO');
     }
+
+    console.log('✅ THREE-WAY MATCHING COMPLETE!\n');
 
     res.json({
       success: true,
@@ -69,7 +82,7 @@ router.post('/match', async (req, res) => {
       message: `Matching complete: ${matchingResult.overallStatus}`,
     });
   } catch (error) {
-    console.error('Three-way matching error:', error);
+    console.error('❌ Three-way matching error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -81,7 +94,6 @@ router.get('/suggestions/:type/:id', async (req, res) => {
     const organizationId = req.user.organizationId;
 
     if (type === 'po') {
-      // Find GRNs and Invoices for this PO
       const po = await PurchaseOrder.findOne({
         _id: id,
         organization: organizationId,
@@ -101,7 +113,6 @@ router.get('/suggestions/:type/:id', async (req, res) => {
 
       res.json({ po, grns, invoices });
     } else if (type === 'grn') {
-      // Find PO and possible Invoices for this GRN
       const grn = await GRN.findOne({
         _id: id,
         organization: organizationId,
@@ -118,7 +129,6 @@ router.get('/suggestions/:type/:id', async (req, res) => {
 
       res.json({ grn, po: grn.purchaseOrder, invoices });
     } else if (type === 'invoice') {
-      // Find PO and GRN for this Invoice
       const invoice = await Invoice.findOne({
         _id: id,
         organization: organizationId,
@@ -183,7 +193,6 @@ router.get('/dashboard', async (req, res) => {
       }),
     ]);
 
-    // Get recent mismatches
     const recentMismatches = await GRN.find({
       organization: organizationId,
       matchingStatus: { $in: ['MISMATCHED', 'PARTIALLY_MATCHED'] },
@@ -276,7 +285,6 @@ router.patch('/discrepancies/:grnId/:discrepancyId/resolve', async (req, res) =>
     discrepancy.resolvedAt = new Date();
     discrepancy.resolution = resolution;
 
-    // Check if all discrepancies resolved
     const allResolved = grn.discrepancies.every((d) => d.resolvedAt);
     if (allResolved) {
       grn.hasDiscrepancies = false;
@@ -299,10 +307,28 @@ router.patch('/discrepancies/:grnId/:discrepancyId/resolve', async (req, res) =>
 // ✅ HELPER: PERFORM THREE-WAY MATCHING
 // ============================================
 
-async function performThreeWayMatch(po, grn, invoice) {
+function normalizeString(str) {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+export async function performThreeWayMatch(po, grn, invoice) {
   const discrepancies = [];
   let matchedItems = 0;
-  let totalItems = Math.max(po.items.length, grn.items.length, invoice.items.length);
+
+  console.log('\n🔍 Performing three-way match...');
+  console.log(`   PO Items: ${po.items.length}`);
+  console.log(`   GRN Items: ${grn.items.length}`);
+  console.log(`   Invoice Items: ${invoice.items.length}`);
+
+  // Tolerance levels
+  const QTY_TOLERANCE = 0.01;      // Allow 0.01 unit difference
+  const RATE_TOLERANCE_PCT = 0.1;  // Allow 0.1% rate difference
+  const AMT_TOLERANCE_PCT = 1;     // Allow 1% amount difference
 
   // 1. Check PO Number Match
   if (po.poNumber !== grn.poNumber) {
@@ -322,7 +348,10 @@ async function performThreeWayMatch(po, grn, invoice) {
   }
 
   // 2. Check Vendor Match
-  if (po.vendor.toString() !== invoice.client.toString()) {
+  const poVendorId = po.vendor._id || po.vendor;
+  const invClientId = invoice.client._id || invoice.client;
+  
+  if (poVendorId.toString() !== invClientId.toString()) {
     discrepancies.push({
       type: 'ITEM_MISMATCH',
       description: 'Vendor mismatch between PO and Invoice',
@@ -330,19 +359,33 @@ async function performThreeWayMatch(po, grn, invoice) {
     });
   }
 
-  // 3. Check Line Items
-  const tolerance = 0.05; // 5% tolerance for quantity/rate differences
+  // 3. Create item maps for easier matching
+  const grnItemMap = new Map();
+  grn.items.forEach(item => {
+    const key = normalizeString(item.description);
+    grnItemMap.set(key, item);
+  });
 
-  for (let i = 0; i < po.items.length; i++) {
-    const poItem = po.items[i];
-    const grnItem = grn.items.find(
-      (g) => g.description === poItem.description
-    );
-    const invoiceItem = invoice.items.find(
-      (inv) => inv.description === poItem.description
-    );
+  const invoiceItemMap = new Map();
+  invoice.items.forEach(item => {
+    const key = normalizeString(item.description);
+    invoiceItemMap.set(key, item);
+  });
 
+  // 4. Check each PO item
+  console.log('\n   📦 Checking items...');
+  
+  for (const poItem of po.items) {
+    const itemKey = normalizeString(poItem.description);
+    console.log(`\n   Item: "${poItem.description}"`);
+    console.log(`   Key: "${itemKey}"`);
+
+    const grnItem = grnItemMap.get(itemKey);
+    const invoiceItem = invoiceItemMap.get(itemKey);
+
+    // Check if item exists in GRN
     if (!grnItem) {
+      console.log('      ❌ Not found in GRN');
       discrepancies.push({
         type: 'ITEM_MISMATCH',
         description: `Item "${poItem.description}" in PO but not in GRN`,
@@ -351,7 +394,9 @@ async function performThreeWayMatch(po, grn, invoice) {
       continue;
     }
 
+    // Check if item exists in Invoice
     if (!invoiceItem) {
+      console.log('      ❌ Not found in Invoice');
       discrepancies.push({
         type: 'ITEM_MISMATCH',
         description: `Item "${poItem.description}" in PO but not in Invoice`,
@@ -360,68 +405,125 @@ async function performThreeWayMatch(po, grn, invoice) {
       continue;
     }
 
-    // Quantity check
-    const qtyDiff = Math.abs(grnItem.acceptedQuantity - invoiceItem.quantity);
-    const qtyTolerance = grnItem.acceptedQuantity * tolerance;
+    console.log('      ✅ Found in PO, GRN, and Invoice');
 
-    if (qtyDiff > qtyTolerance) {
+    // Extract quantities
+    const poQty = parseFloat(poItem.quantity) || 0;
+    const grnQty = parseFloat(grnItem.acceptedQuantity) || 0;
+    const invQty = parseFloat(invoiceItem.quantity) || 0;
+
+    console.log(`      Quantities: PO=${poQty}, GRN=${grnQty}, INV=${invQty}`);
+
+    // Check GRN vs Invoice quantity
+    const qtyDiff = Math.abs(grnQty - invQty);
+    if (qtyDiff > QTY_TOLERANCE) {
+      console.log(`      ⚠️  Quantity mismatch (diff: ${qtyDiff})`);
       discrepancies.push({
         type: 'QUANTITY_MISMATCH',
-        description: `Quantity mismatch for "${poItem.description}": GRN (${grnItem.acceptedQuantity}) vs Invoice (${invoiceItem.quantity})`,
-        severity: qtyDiff > grnItem.acceptedQuantity * 0.1 ? 'HIGH' : 'MEDIUM',
+        description: `Quantity mismatch for "${poItem.description}": GRN accepted ${grnQty}, Invoice ${invQty}`,
+        severity: qtyDiff > (grnQty * 0.1) ? 'HIGH' : 'MEDIUM',
       });
-    } else {
-      matchedItems++;
     }
 
-    // Rate check
-    const rateDiff = Math.abs(poItem.rate - invoiceItem.rate);
-    const rateTolerance = poItem.rate * tolerance;
+    // Extract rates
+    const poRate = parseFloat(poItem.rate) || 0;
+    const invRate = parseFloat(invoiceItem.rate) || 0;
 
-    if (rateDiff > rateTolerance) {
+    console.log(`      Rates: PO=${poRate}, INV=${invRate}`);
+
+    // Check rate difference (allow 0.1% tolerance)
+    const rateDiff = Math.abs(poRate - invRate);
+    const rateDiffPct = poRate > 0 ? (rateDiff / poRate) * 100 : 0;
+
+    if (rateDiffPct > RATE_TOLERANCE_PCT) {
+      console.log(`      ⚠️  Rate mismatch (diff: ${rateDiffPct.toFixed(2)}%)`);
       discrepancies.push({
         type: 'RATE_MISMATCH',
-        description: `Rate mismatch for "${poItem.description}": PO (₹${poItem.rate}) vs Invoice (₹${invoiceItem.rate})`,
+        description: `Rate mismatch for "${poItem.description}": PO rate ₹${poRate.toFixed(2)}, Invoice rate ₹${invRate.toFixed(2)}`,
+        severity: rateDiffPct > 5 ? 'HIGH' : 'MEDIUM',
+      });
+    }
+
+    // Check amounts
+    const invAmount = parseFloat(invoiceItem.amount) || 0;
+    const expectedAmount = grnQty * poRate;
+    const amountDiff = Math.abs(invAmount - expectedAmount);
+    const amountDiffPct = expectedAmount > 0 ? (amountDiff / expectedAmount) * 100 : 0;
+
+    console.log(`      Amounts: INV=${invAmount}, Expected=${expectedAmount.toFixed(2)}, Diff=${amountDiffPct.toFixed(2)}%`);
+
+    // If all checks pass within tolerance, count as matched
+    if (qtyDiff <= QTY_TOLERANCE && 
+        rateDiffPct <= RATE_TOLERANCE_PCT && 
+        amountDiffPct <= AMT_TOLERANCE_PCT) {
+      matchedItems++;
+      console.log('      ✅ ITEM MATCHED!');
+    } else {
+      console.log('      ⚠️  Item has discrepancies');
+    }
+  }
+
+  // 5. Check for items in Invoice but not in PO
+  for (const invItem of invoice.items) {
+    const itemKey = normalizeString(invItem.description);
+    const poItem = po.items.find(p => normalizeString(p.description) === itemKey);
+    
+    if (!poItem) {
+      console.log(`\n   ⚠️  Item "${invItem.description}" in Invoice but not in PO`);
+      discrepancies.push({
+        type: 'ITEM_MISMATCH',
+        description: `Item "${invItem.description}" in Invoice but not in PO`,
         severity: 'MEDIUM',
       });
     }
   }
 
-  // 4. Check Total Amount (within 5% tolerance)
-  const amountDiff = Math.abs(po.totalValue - invoice.totalAmount);
-  const amountTolerance = po.totalValue * tolerance;
+  // 6. Check total amounts (with tolerance)
+  const poTotal = parseFloat(po.totalValue || po.totalAmount) || 0;
+  const invTotal = parseFloat(invoice.totalAmount) || 0;
+  const totalDiff = Math.abs(poTotal - invTotal);
+  const totalDiffPct = poTotal > 0 ? (totalDiff / poTotal) * 100 : 0;
 
-  if (amountDiff > amountTolerance) {
+  console.log(`\n   Total Amounts: PO=₹${poTotal}, INV=₹${invTotal}, Diff=${totalDiffPct.toFixed(2)}%`);
+
+  if (totalDiffPct > 5) { // 5% tolerance for total amount
     discrepancies.push({
       type: 'RATE_MISMATCH',
-      description: `Total amount mismatch: PO (₹${po.totalValue}) vs Invoice (₹${invoice.totalAmount})`,
-      severity: 'HIGH',
+      description: `Total amount mismatch: PO ₹${poTotal.toFixed(2)}, Invoice ₹${invTotal.toFixed(2)} (${totalDiffPct.toFixed(1)}% difference)`,
+      severity: totalDiffPct > 10 ? 'HIGH' : 'MEDIUM',
     });
   }
 
-  // Determine overall status
+  // 7. Determine overall status
+  const totalItems = po.items.length;
   let overallStatus;
-  if (discrepancies.length === 0) {
+
+  if (discrepancies.length === 0 && matchedItems === totalItems) {
     overallStatus = 'MATCHED';
-  } else if (matchedItems > totalItems / 2) {
+  } else if (matchedItems > 0 && matchedItems >= totalItems * 0.5) {
     overallStatus = 'PARTIALLY_MATCHED';
   } else {
     overallStatus = 'MISMATCHED';
   }
 
+  console.log(`\n   📊 Final Result:`);
+  console.log(`      Status: ${overallStatus}`);
+  console.log(`      Matched: ${matchedItems}/${totalItems}`);
+  console.log(`      Discrepancies: ${discrepancies.length}`);
+
   return {
     overallStatus,
     matchedItems,
     totalItems,
-    matchPercentage: ((matchedItems / totalItems) * 100).toFixed(2),
+    matchPercentage: totalItems > 0 ? ((matchedItems / totalItems) * 100).toFixed(2) : 0,
     discrepancies,
     summary: {
       poNumber: po.poNumber,
       grnNumber: grn.grnNumber,
       invoiceNumber: invoice.invoiceNumber,
-      poAmount: po.totalValue,
-      grnAmount: grn.totalAmount,
-      invoiceAmount: invoice.totalAmount,
+      poAmount: poTotal,
+      grnAmount: grn.totalAmount || 0,
+      invoiceAmount: invTotal,
       discrepancyCount: discrepancies.length,
     },
   };

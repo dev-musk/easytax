@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/models/PurchaseOrder.js
-// ✅ FEATURE #16: PO Management Module
+// ✅ FEATURE #16: PO Management Module - WITH APPROVED STATUS
 // ============================================
 
 import mongoose from 'mongoose';
@@ -90,6 +90,8 @@ const purchaseOrderSchema = new mongoose.Schema(
       enum: [
         'DRAFT',
         'PENDING',
+        'APPROVED',        // ✅ NEW STATUS
+        'RECEIVING',       // ✅ NEW STATUS (when GRN is created)
         'PARTIALLY_RECEIVED',
         'RECEIVED',
         'PARTIALLY_PAID',
@@ -98,6 +100,13 @@ const purchaseOrderSchema = new mongoose.Schema(
       ],
       default: 'PENDING',
     },
+    
+    // Approval Details
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    approvedAt: Date,
     
     // Delivery Details
     expectedDeliveryDate: Date,
@@ -172,22 +181,31 @@ purchaseOrderSchema.pre('save', function (next) {
     item.balanceQuantity = item.quantity - item.receivedQuantity;
   });
   
-  // Update PO status based on received quantities
+  // Update PO status based on received quantities and payment
   const allReceived = this.items.every((item) => item.receivedQuantity >= item.quantity);
   const someReceived = this.items.some((item) => item.receivedQuantity > 0);
   
+  // Don't change status if it's DRAFT, APPROVED, or CANCELLED
+  if (['DRAFT', 'CANCELLED'].includes(this.status)) {
+    return next();
+  }
+  
+  // If status is APPROVED and goods start arriving, change to RECEIVING
+  if (this.status === 'APPROVED' && someReceived) {
+    this.status = 'RECEIVING';
+  }
+  
+  // Status progression based on receiving and payment
   if (allReceived && this.balanceAmount === 0) {
     this.status = 'PAID';
   } else if (allReceived && this.balanceAmount > 0) {
     this.status = 'RECEIVED';
   } else if (someReceived && this.paidAmount > 0) {
     this.status = 'PARTIALLY_RECEIVED';
-  } else if (this.paidAmount > 0 && this.balanceAmount > 0) {
+  } else if (someReceived && this.status !== 'RECEIVING') {
+    this.status = 'RECEIVING';
+  } else if (this.paidAmount > 0 && this.balanceAmount > 0 && !someReceived) {
     this.status = 'PARTIALLY_PAID';
-  } else if (this.status === 'DRAFT') {
-    // Keep as DRAFT
-  } else {
-    this.status = 'PENDING';
   }
   
   next();

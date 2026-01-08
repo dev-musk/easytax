@@ -62,6 +62,8 @@ import HSNManagement from "./pages/HSNManagement";
 import MultiGSTIN from "./pages/MultiGSTIN";
 import InventoryDashboard from "./pages/InventoryDashboard";
 import GRNList from "./pages/GRNList";
+import AddEditGRN from "./pages/AddEditGRN";
+import GRNView from './pages/GRNView';
 
 import { useAuthStore } from "./store/authStore";
 
@@ -317,6 +319,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
+        <Route path="/grns/add" element={<AddEditGRN />} />
+        <Route path="/grns/edit/:id" element={<AddEditGRN />} />
+        <Route path="/grns/view/:id" element={<GRNView />} />
         {/* Delivery Challan */}
         <Route
           path="/sales/delivery-challan"

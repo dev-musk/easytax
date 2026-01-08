@@ -144,6 +144,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   // ✅ FEATURE #36: File Upload State
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(false);
+  const [gstinEntries, setGstinEntries] = useState([]);
 
   const [formData, setFormData] = useState({
     clientId: "",
@@ -210,13 +211,32 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
       status: "NOT_GENERATED",
     },
     template: "MODERN",
+    selectedGstin: "",
   });
+
+  const fetchGSTINs = async () => {
+    try {
+      const response = await api.get("/api/organization/gstins");
+      setGstinEntries(response.data.gstins || []);
+
+      // Auto-select default GSTIN
+      const defaultGstin = response.data.gstins?.find(
+        (g) => g.isDefault && g.isActive
+      );
+      if (defaultGstin && !formData.selectedGstin) {
+        setFormData((prev) => ({ ...prev, selectedGstin: defaultGstin._id }));
+      }
+    } catch (error) {
+      console.error("Error fetching GSTINs:", error);
+    }
+  };
 
   useEffect(() => {
     fetchClients();
     fetchProducts();
     fetchTDSConfigs();
     fetchOrganization();
+    fetchGSTINs();
 
     if (isEditing) {
       fetchInvoice();
@@ -293,15 +313,14 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   }, [formData.clientId, formData.items, organization]);
 
   // ✅ FEATURE #29: Set invoice type from prop
-useEffect(() => {
-  if (propInvoiceType && !isEditing) {
-    setFormData(prev => ({
-      ...prev,
-      invoiceType: propInvoiceType
-    }));
-  }
-}, [propInvoiceType, isEditing]);
-
+  useEffect(() => {
+    if (propInvoiceType && !isEditing) {
+      setFormData((prev) => ({
+        ...prev,
+        invoiceType: propInvoiceType,
+      }));
+    }
+  }, [propInvoiceType, isEditing]);
 
   const fetchOrganization = async () => {
     try {
@@ -652,110 +671,148 @@ useEffect(() => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    // ✅ FEATURE #19: Check for duplicate before submitting
-    if (duplicateCheckResult?.exists && !isEditing) {
-      alert("Invoice number already exists! Please change the invoice number.");
-      return;
-    }
+  if (duplicateCheckResult?.exists && !isEditing) {
+    alert("Invoice number already exists! Please change the invoice number.");
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
 
-    try {
-      const totals = calculateTotals();
+  try {
+    const totals = calculateTotals();
 
-      const invoiceData = {
-        clientId: formData.clientId,
-        invoiceType: formData.invoiceType,
-        invoiceDate: formData.invoiceDate,
-        dueDate: formData.dueDate,
-        poNumber: formData.poNumber,
-        poDate: formData.poDate || null,
-        contractNumber: formData.contractNumber,
-        salesPersonName: formData.salesPersonName,
-        items: formData.items.map(({ productId, ...item }) => item),
-        discountType: formData.discountType,
-        discountValue: formData.discountValue,
-        tdsSection: formData.tdsSection || null,
-        tdsRate: formData.tdsRate || 0,
-        tdsAmount: totals.tdsAmount || 0,
-        tcsApplicable: formData.tcsApplicable,
-        tcsRate: formData.tcsRate || 0,
-        reverseCharge: formData.reverseCharge,
-        notes: formData.notes,
-        eInvoice: formData.eInvoice,
-        eWayBill: formData.eWayBill,
-        template: formData.template,
-      };
+    const invoiceData = {
+      clientId: formData.clientId,
+      invoiceType: formData.invoiceType,
+      invoiceDate: formData.invoiceDate,
+      dueDate: formData.dueDate,
+      poNumber: formData.poNumber,
+      poDate: formData.poDate || null,
+      contractNumber: formData.contractNumber,
+      salesPersonName: formData.salesPersonName,
+      // ✅ FIX: Keep productId for stock validation
+      items: formData.items.map((item) => ({
+        description: item.description,
+        hsnSacCode: item.hsnSacCode,
+        quantity: item.quantity,
+        unit: item.unit,
+        rate: item.rate,
+        gstRate: item.gstRate,
+        itemType: item.itemType,
+        discountType: item.discountType,
+        discountValue: item.discountValue,
+        discountAmount: item.discountAmount,
+        taxableAmount: item.taxableAmount,
+        amount: item.amount,
+        productId: item.productId, // ✅ Include this!
+      })),
+      discountType: formData.discountType,
+      discountValue: formData.discountValue,
+      tdsSection: formData.tdsSection || null,
+      tdsRate: formData.tdsRate || 0,
+      tdsAmount: totals.tdsAmount || 0,
+      tcsApplicable: formData.tcsApplicable,
+      tcsRate: formData.tcsRate || 0,
+      reverseCharge: formData.reverseCharge,
+      notes: formData.notes,
+      eInvoice: formData.eInvoice,
+      eWayBill: formData.eWayBill,
+      template: formData.template,
+      selectedGstin: formData.selectedGstin || null,
+    };
 
-      console.log("Submitting invoice data:", invoiceData);
+    console.log("Submitting invoice data:", invoiceData);
 
-      if (isEditing) {
-        await api.put(`/api/invoices/${id}`, invoiceData);
+    if (isEditing) {
+      await api.put(`/api/invoices/${id}`, invoiceData);
 
-        // ✅ FEATURE #36: Upload files if editing
-        if (selectedFiles.length > 0) {
-          setUploadProgress(true);
-          const formData = new FormData();
-          selectedFiles.forEach((file) => {
-            formData.append("files", file);
+      if (selectedFiles.length > 0) {
+        setUploadProgress(true);
+        const fileFormData = new FormData();
+        selectedFiles.forEach((file) => {
+          fileFormData.append("files", file);
+        });
+
+        try {
+          await api.post(`/api/invoices/${id}/attachments`, fileFormData, {
+            headers: { "Content-Type": "multipart/form-data" },
           });
-
-          try {
-            await api.post(`/api/invoices/${id}/attachments`, formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
-          } catch (uploadError) {
-            console.error("Upload error:", uploadError);
-            alert("Invoice saved but file upload failed");
-          }
-          setUploadProgress(false);
+        } catch (uploadError) {
+          console.error("Upload error:", uploadError);
+          alert("Invoice saved but file upload failed");
         }
-
-        alert("Invoice updated successfully");
-      } else {
-        const response = await api.post("/api/invoices", invoiceData);
-        const createdInvoiceId = response.data._id;
-
-        // ✅ FEATURE #36: Upload files if creating
-        if (selectedFiles.length > 0) {
-          setUploadProgress(true);
-          const formData = new FormData();
-          selectedFiles.forEach((file) => {
-            formData.append("files", file);
-          });
-
-          try {
-            await api.post(
-              `/api/invoices/${createdInvoiceId}/attachments`,
-              formData,
-              {
-                headers: { "Content-Type": "multipart/form-data" },
-              }
-            );
-          } catch (uploadError) {
-            console.error("Upload error:", uploadError);
-            alert("Invoice created but file upload failed");
-          }
-          setUploadProgress(false);
-        }
-
-        alert(
-          isDuplicate
-            ? "Duplicate invoice created successfully"
-            : "Invoice created successfully"
-        );
+        setUploadProgress(false);
       }
-      navigate("/invoices");
-    } catch (error) {
-      console.error("Error saving invoice:", error);
-      console.error("Error details:", error.response?.data);
-      alert(error.response?.data?.error || "Failed to save invoice");
-    } finally {
-      setLoading(false);
+
+      alert("Invoice updated successfully");
+    } else {
+      const response = await api.post("/api/invoices", invoiceData);
+      const createdInvoiceId = response.data._id;
+
+      if (selectedFiles.length > 0) {
+        setUploadProgress(true);
+        const fileFormData = new FormData();
+        selectedFiles.forEach((file) => {
+          fileFormData.append("files", file);
+        });
+
+        try {
+          await api.post(
+            `/api/invoices/${createdInvoiceId}/attachments`,
+            fileFormData,
+            {
+              headers: { "Content-Type": "multipart/form-data" },
+            }
+          );
+        } catch (uploadError) {
+          console.error("Upload error:", uploadError);
+          alert("Invoice created but file upload failed");
+        }
+        setUploadProgress(false);
+      }
+
+      alert(
+        isDuplicate
+          ? "Duplicate invoice created successfully"
+          : "Invoice created successfully"
+      );
     }
-  };
+    navigate("/invoices");
+  } catch (error) {
+    console.error("Error saving invoice:", error);
+    console.error("Error details:", error.response?.data);
+    
+    // ✅ Better error handling
+    if (error.response?.status === 400) {
+      const errorData = error.response.data;
+      
+      if (errorData.error === "Insufficient stock") {
+        let alertMessage = "⚠️ INSUFFICIENT STOCK\n\n";
+        
+        if (errorData.stockErrors && Array.isArray(errorData.stockErrors)) {
+          errorData.stockErrors.forEach((stockError) => {
+            alertMessage += `📦 ${stockError.product}\n`;
+            alertMessage += `   Requested: ${stockError.requested} ${stockError.unit}\n`;
+            alertMessage += `   Available: ${stockError.available} ${stockError.unit}\n\n`;
+          });
+        } else if (errorData.details) {
+          alertMessage += errorData.details + "\n\n";
+        }
+        
+        alertMessage += "Please reduce the quantity or choose different items.";
+        alert(alertMessage);
+      } else {
+        alert(errorData.error || "Validation failed");
+      }
+    } else {
+      alert(error.response?.data?.error || "Failed to save invoice");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const totals = calculateTotals();
 
@@ -778,15 +835,15 @@ useEffect(() => {
   };
 
   const getInvoiceTypeName = (type) => {
-  const types = {
-    'TAX_INVOICE': 'Tax Invoice',
-    'PROFORMA': 'Pro-Forma Invoice',
-    'CREDIT_NOTE': 'Credit Note',
-    'DEBIT_NOTE': 'Debit Note',
-    'DELIVERY_CHALLAN': 'Delivery Challan',
+    const types = {
+      TAX_INVOICE: "Tax Invoice",
+      PROFORMA: "Pro-Forma Invoice",
+      CREDIT_NOTE: "Credit Note",
+      DEBIT_NOTE: "Debit Note",
+      DELIVERY_CHALLAN: "Delivery Challan",
+    };
+    return types[type] || type;
   };
-  return types[type] || type;
-};
 
   return (
     <Layout>
@@ -877,6 +934,38 @@ useEffect(() => {
                     disabled
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-blue-50 text-blue-900 font-medium"
                   />
+                </div>
+              )}
+
+              {gstinEntries.length > 1 && (
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Billing GSTIN <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={formData.selectedGstin}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        selectedGstin: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select Billing GSTIN</option>
+                    {gstinEntries
+                      .filter((g) => g.isActive)
+                      .map((gstin) => (
+                        <option key={gstin._id} value={gstin._id}>
+                          {gstin.stateName} - {gstin.gstin}
+                          {gstin.isDefault && " (Default)"}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select the GSTIN for this invoice's billing location
+                  </p>
                 </div>
               )}
 

@@ -7,6 +7,7 @@ import express from 'express';
 import { protect } from '../middleware/auth.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
+import CategoryMapping from '../models/CategoryMapping.js';
 
 const router = express.Router();
 
@@ -82,21 +83,55 @@ const taxCodeRules = {
 
 router.post('/suggest-category', async (req, res) => {
   try {
-    const { description, vendorName, amount, items } = req.body;
+    const { description, vendorName, clientId, amount, items } = req.body;
     const organizationId = req.user.organizationId;
 
-    if (!description && !vendorName && !items) {
-      return res.status(400).json({ error: 'Provide description, vendor, or items' });
+    if (!description && !vendorName && !items && !clientId) {
+      return res.status(400).json({ error: 'Provide description, vendor, client ID, or items' });
     }
 
-    // Combine all text for analysis
+    // ✅ STEP 1: Check if we have a confirmed mapping for this client
+    if (clientId) {
+      const bestCategory = await CategoryMapping.getBestCategory(organizationId, clientId);
+      if (bestCategory) {
+        const taxCode = taxCodeRules[bestCategory];
+        return res.json({
+          suggestions: [{
+            category: bestCategory,
+            confidence: 95, // High confidence from confirmed mapping
+            taxCode,
+            source: 'confirmed_mapping',
+          }],
+          primarySuggestion: {
+            category: bestCategory,
+            confidence: 95,
+            taxCode,
+            source: 'confirmed_mapping',
+          },
+        });
+      }
+    }
+
+    // ✅ STEP 2: Get historical mappings for this client
+    let historicalBoost = {};
+    if (clientId) {
+      const clientMappings = await CategoryMapping.find({
+        organization: organizationId,
+        client: clientId,
+      }).sort({ confidence: -1, usageCount: -1 }).limit(3);
+      
+      clientMappings.forEach(mapping => {
+        historicalBoost[mapping.category] = mapping.confidence;
+      });
+    }
+
+    // ✅ STEP 3: Keyword-based scoring (existing logic)
     const textToAnalyze = [
       description || '',
       vendorName || '',
       ...(items || []).map(item => `${item.description || ''} ${item.hsnSacCode || ''}`),
     ].join(' ').toLowerCase();
 
-    // Score each category
     const scores = {};
     Object.keys(expenseCategories).forEach(category => {
       scores[category] = 0;
@@ -112,42 +147,117 @@ router.post('/suggest-category', async (req, res) => {
       // Check vendors
       rules.vendors.forEach(vendor => {
         if (textToAnalyze.includes(vendor)) {
-          scores[category] += 20; // Vendor match is stronger signal
+          scores[category] += 20;
         }
       });
+      
+      // ✅ Apply historical boost
+      if (historicalBoost[category]) {
+        scores[category] += historicalBoost[category] / 2; // 50% weight to history
+      }
     });
 
-    // Get historical patterns
-    const historicalCategory = await getHistoricalPattern(
-      organizationId,
-      vendorName,
-      description
-    );
-
-    if (historicalCategory) {
-      scores[historicalCategory] = (scores[historicalCategory] || 0) + 30; // Historical pattern is strongest
-    }
-
-    // Find best match
+    // ✅ STEP 4: Get top suggestions
     const sortedCategories = Object.entries(scores)
       .filter(([_, score]) => score > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([category, score]) => ({
         category,
-        confidence: Math.min(score / 50 * 100, 95), // Cap at 95%
+        confidence: Math.min(score / 50 * 100, 95),
         taxCode: taxCodeRules[category],
+        source: historicalBoost[category] ? 'hybrid' : 'keyword',
       }));
 
     res.json({
-      suggestions: sortedCategories.slice(0, 3), // Top 3 suggestions
+      suggestions: sortedCategories.slice(0, 3),
       primarySuggestion: sortedCategories[0] || {
         category: 'Uncategorized',
         confidence: 0,
         taxCode: { gstRate: 18, tdsSection: null },
+        source: 'default',
       },
     });
   } catch (error) {
     console.error('Category suggestion error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/confirm', async (req, res) => {
+  try {
+    const { clientId, category, description } = req.body;
+    const organizationId = req.user.organizationId;
+
+    if (!clientId || !category) {
+      return res.status(400).json({ error: 'clientId and category required' });
+    }
+
+    // Extract keywords from description
+    const keywords = description ? 
+      description.toLowerCase().split(' ').filter(w => w.length > 3).slice(0, 5) : 
+      [];
+
+    await CategoryMapping.recordUsage(organizationId, clientId, category, keywords);
+
+    res.json({ message: 'Category usage recorded', category });
+  } catch (error) {
+    console.error('Confirm error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ ENHANCED: Learn from corrections
+router.post('/learn', async (req, res) => {
+  try {
+    const { clientId, suggestedCategory, actualCategory } = req.body;
+    const organizationId = req.user.organizationId;
+
+    if (!clientId || !actualCategory) {
+      return res.status(400).json({ error: 'clientId and actualCategory required' });
+    }
+
+    if (suggestedCategory && suggestedCategory !== actualCategory) {
+      // User corrected the suggestion
+      await CategoryMapping.learnFromCorrection(
+        organizationId, 
+        clientId, 
+        suggestedCategory, 
+        actualCategory
+      );
+      
+      return res.json({ 
+        message: 'Learning recorded - confidence adjusted',
+        decreased: suggestedCategory,
+        increased: actualCategory,
+      });
+    } else {
+      // User confirmed the suggestion
+      await CategoryMapping.recordUsage(organizationId, clientId, actualCategory);
+      
+      return res.json({ 
+        message: 'Confirmation recorded - confidence increased',
+        category: actualCategory,
+      });
+    }
+  } catch (error) {
+    console.error('Learning error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Get all mappings for organization
+router.get('/mappings', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+    
+    const mappings = await CategoryMapping.find({ organization: organizationId })
+      .populate('client', 'companyName email')
+      .sort({ confidence: -1, usageCount: -1 })
+      .limit(100);
+    
+    res.json(mappings);
+  } catch (error) {
+    console.error('Mappings error:', error);
     res.status(500).json({ error: error.message });
   }
 });

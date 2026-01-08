@@ -9,6 +9,8 @@ import Invoice from "../models/Invoice.js";
 import Client from "../models/Client.js";
 import Product from "../models/Product.js";
 import Organization from "../models/Organization.js";
+import PurchaseOrder from "../models/PurchaseOrder.js";
+import GRN from "../models/GRN.js";
 import mongoose from "mongoose";
 import { calculateGSTBreakdown } from "../utils/gstCalculator.js";
 import { amountToWords } from "../utils/numberToWords.js";
@@ -301,6 +303,56 @@ router.post(
         }
       }
 
+      if (data.invoiceType === "TAX_INVOICE") {
+        console.log("🔍 Validating stock availability...");
+
+        const stockErrors = [];
+
+        for (const item of data.items) {
+          if (item.productId && item.productId !== "custom") {
+            try {
+              const product = await Product.findById(item.productId);
+
+              if (
+                product &&
+                product.type === "PRODUCT" &&
+                product.trackInventory
+              ) {
+                const isAvailable = product.isStockAvailable(item.quantity);
+
+                if (!isAvailable) {
+                  stockErrors.push({
+                    product: product.name,
+                    requested: item.quantity,
+                    available: product.currentStock,
+                    unit: product.unit,
+                  });
+                }
+              }
+            } catch (error) {
+              console.error("Stock check error:", error);
+            }
+          }
+        }
+
+        if (stockErrors.length > 0) {
+          const errorMessage = stockErrors
+            .map(
+              (e) =>
+                `${e.product}: Requested ${e.requested} ${e.unit}, but only ${e.available} ${e.unit} available`
+            )
+            .join("; ");
+
+          return res.status(400).json({
+            error: "Insufficient stock",
+            details: errorMessage,
+            stockErrors,
+          });
+        }
+
+        console.log("✅ Stock validation passed");
+      }
+
       // Generate invoice number
       const invoiceNumber = `${organization.invoicePrefix}-${String(
         organization.nextInvoiceNumber
@@ -343,7 +395,19 @@ router.post(
 
       const amountInWordsText = amountToWords(finalTotal);
 
-      // Create invoice
+      // ✅ DECLARE invoiceItems BEFORE using it
+      const invoiceItems = data.items.map((item) => {
+        const gstItem = gstBreakdown.items.find(
+          (gst) => gst.description === item.description
+        );
+        return {
+          ...gstItem,
+          productId: item.productId, // ← ADD THIS
+          product: item.productId, // ← ADD THIS for stock reduction
+        };
+      });
+
+      // ✅ NOW create invoice with invoiceItems
       const invoice = await Invoice.create({
         invoiceNumber,
         invoiceType: data.invoiceType,
@@ -355,8 +419,8 @@ router.post(
         poDate: data.poDate,
         contractNumber: data.contractNumber,
         salesPersonName: data.salesPersonName,
+        items: invoiceItems, // ✅ NOW it's declared!
 
-        items: gstBreakdown.items,
         subtotal: parseFloat(subtotal.toFixed(2)),
         discountType: data.discountType,
         discountValue: data.discountValue,
@@ -402,12 +466,17 @@ router.post(
         organization: organizationId,
       });
 
+      console.log(`📝 Invoice created: ${invoice.invoiceNumber}`);
+
       // ✅ REDUCE STOCK FOR TAX_INVOICE
       if (data.invoiceType === "TAX_INVOICE") {
         for (const item of invoice.items) {
-          if (item.product) {
+          // ✅ Use productId instead of product
+          const productId = item.productId || item.product;
+
+          if (productId) {
             try {
-              const product = await Product.findById(item.product);
+              const product = await Product.findById(productId);
               if (product && product.trackInventory) {
                 await product.reduceStock(
                   item.quantity,
@@ -416,10 +485,12 @@ router.post(
                   req.user.id,
                   "Main Warehouse"
                 );
+                console.log(
+                  `✅ Stock reduced for ${product.name}: ${item.quantity} units`
+                );
               }
             } catch (stockError) {
               console.error("Stock reduction error:", stockError);
-              // Continue even if stock update fails
             }
           }
         }
@@ -428,9 +499,11 @@ router.post(
       // ✅ INCREASE STOCK FOR CREDIT_NOTE
       if (data.invoiceType === "CREDIT_NOTE") {
         for (const item of invoice.items) {
-          if (item.product) {
+          const productId = item.productId || item.product;
+
+          if (productId) {
             try {
-              const product = await Product.findById(item.product);
+              const product = await Product.findById(productId);
               if (product && product.trackInventory) {
                 await product.increaseStock(
                   item.quantity,
@@ -438,6 +511,9 @@ router.post(
                   invoice._id,
                   req.user.id,
                   "Main Warehouse"
+                );
+                console.log(
+                  `✅ Stock increased for ${product.name}: ${item.quantity} units`
                 );
               }
             } catch (stockError) {
@@ -447,11 +523,113 @@ router.post(
         }
       }
 
-      // Increment invoice number
+      // ============================================
+      // ✅ THREE-WAY MATCHING (BEFORE incrementing invoice number)
+      // ============================================
+      if (data.poNumber) {
+        console.log(`\n🔍 THREE-WAY MATCHING: Starting...`);
+        console.log(`   Invoice: ${invoice.invoiceNumber}`);
+        console.log(`   PO Number: ${data.poNumber}`);
+
+        try {
+          // Find matching PO
+          const po = await PurchaseOrder.findOne({
+            poNumber: data.poNumber,
+            organization: organizationId,
+          });
+
+          if (po) {
+            console.log(`   ✅ Found PO: ${po.poNumber}`);
+
+            // Find associated GRN
+            const grn = await GRN.findOne({
+              purchaseOrder: po._id,
+              organization: organizationId,
+            }).sort({ createdAt: -1 }); // Get latest GRN
+
+            if (grn) {
+              console.log(`   ✅ Found GRN: ${grn.grnNumber}`);
+
+              // Perform automatic three-way matching
+              const { performThreeWayMatch } = await import(
+                "./threeWayMatching.js"
+              );
+
+              const matchResult = await performThreeWayMatch(po, grn, invoice);
+
+              console.log(
+                `\n   📊 Matching Result: ${matchResult.overallStatus}`
+              );
+              console.log(
+                `   📊 Discrepancies: ${matchResult.discrepancies.length}`
+              );
+
+              // Update GRN with matching status
+              grn.matchingStatus = matchResult.overallStatus;
+              grn.linkedInvoice = invoice._id;
+              grn.invoiceNumber = invoice.invoiceNumber;
+              grn.invoiceMatchDate = new Date();
+
+              if (matchResult.discrepancies.length > 0) {
+                grn.hasDiscrepancies = true;
+                grn.discrepancies = matchResult.discrepancies.map((d) => ({
+                  type: d.type,
+                  description: d.description,
+                  severity: d.severity,
+                }));
+                console.log(
+                  `   ⚠️  ${matchResult.discrepancies.length} discrepancies found`
+                );
+              } else {
+                grn.hasDiscrepancies = false;
+                console.log(`   ✅ No discrepancies - perfect match!`);
+              }
+
+              await grn.save();
+              console.log(
+                `   ✅ GRN updated with status: ${matchResult.overallStatus}`
+              );
+
+              // Link invoice to PO (prevent duplicates)
+              const alreadyLinked = po.linkedInvoices.some(
+                (li) => li.invoice.toString() === invoice._id.toString()
+              );
+
+              if (!alreadyLinked) {
+                po.linkedInvoices.push({
+                  invoice: invoice._id,
+                  invoiceNumber: invoice.invoiceNumber,
+                  linkedDate: new Date(),
+                });
+                await po.save();
+                console.log(`   ✅ Invoice linked to PO`);
+              }
+
+              console.log(`\n✅ THREE-WAY MATCHING COMPLETE!\n`);
+            } else {
+              console.log(`   ⚠️  No GRN found for PO ${po.poNumber}`);
+            }
+          } else {
+            console.log(`   ⚠️  No PO found with number: ${data.poNumber}`);
+          }
+        } catch (matchError) {
+          // Don't fail invoice creation if matching fails
+          console.error(
+            `   ❌ Matching error (non-critical):`,
+            matchError.message
+          );
+        }
+      }
+      // ============================================
+      // END THREE-WAY MATCHING
+      // ============================================
+
+      // Increment invoice number (after matching)
       await Organization.findByIdAndUpdate(organizationId, {
         $inc: { nextInvoiceNumber: 1 },
       });
 
+      // Populate and send response
       const populatedInvoice = await Invoice.findById(invoice._id).populate(
         "client"
       );
@@ -891,6 +1069,66 @@ router.delete(
         return res.status(404).json({ error: "Invoice not found" });
       }
 
+      // ✅ FEATURE #40: RESTORE STOCK if TAX_INVOICE
+      if (invoice.invoiceType === "TAX_INVOICE") {
+        console.log(
+          `🔄 Restoring stock for invoice ${invoice.invoiceNumber}...`
+        );
+
+        for (const item of invoice.items) {
+          if (item.product) {
+            try {
+              const product = await Product.findById(item.product);
+              if (product && product.trackInventory) {
+                await product.increaseStock(
+                  item.quantity,
+                  `Invoice ${invoice.invoiceNumber} deleted`,
+                  invoice._id,
+                  req.user.id,
+                  "Main Warehouse"
+                );
+                console.log(
+                  `✅ Restored ${item.quantity} ${product.unit} of ${product.name}`
+                );
+              }
+            } catch (stockError) {
+              console.error("Stock restoration error:", stockError);
+              // Continue with deletion even if stock update fails
+            }
+          }
+        }
+      }
+
+      // ✅ FEATURE #40: REVERSE STOCK for CREDIT_NOTE
+      if (invoice.invoiceType === "CREDIT_NOTE") {
+        console.log(
+          `🔄 Reversing credit note stock for invoice ${invoice.invoiceNumber}...`
+        );
+
+        for (const item of invoice.items) {
+          if (item.product) {
+            try {
+              const product = await Product.findById(item.product);
+              if (product && product.trackInventory) {
+                // Reduce stock again since credit note is being deleted
+                await product.reduceStock(
+                  item.quantity,
+                  `Credit Note ${invoice.invoiceNumber} deleted`,
+                  invoice._id,
+                  req.user.id,
+                  "Main Warehouse"
+                );
+                console.log(
+                  `✅ Reversed ${item.quantity} ${product.unit} of ${product.name}`
+                );
+              }
+            } catch (stockError) {
+              console.error("Stock reversal error:", stockError);
+            }
+          }
+        }
+      }
+
       // Delete attachments
       if (invoice.attachments && invoice.attachments.length > 0) {
         invoice.attachments.forEach((attachment) => {
@@ -904,6 +1142,7 @@ router.delete(
 
       res.json({ message: "Invoice deleted successfully" });
     } catch (error) {
+      console.error("Delete error:", error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -1013,13 +1252,13 @@ router.post("/:id/send-email", async (req, res) => {
 // ✅ FEATURE #40: INVENTORY DASHBOARD
 // ============================================
 
-router.get('/inventory/dashboard', async (req, res) => {
+router.get("/inventory/dashboard", async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
 
     const products = await Product.find({
       organization: organizationId,
-      type: 'PRODUCT',
+      type: "PRODUCT",
       trackInventory: true,
     });
 
@@ -1063,7 +1302,8 @@ router.get('/inventory/dashboard', async (req, res) => {
         }
         locationStock[loc.locationName].totalItems++;
         locationStock[loc.locationName].totalQuantity += loc.quantity;
-        locationStock[loc.locationName].totalValue += loc.quantity * product.rate;
+        locationStock[loc.locationName].totalValue +=
+          loc.quantity * product.rate;
       });
     });
 
@@ -1091,13 +1331,13 @@ router.get('/inventory/dashboard', async (req, res) => {
       locationStock,
     });
   } catch (error) {
-    console.error('Inventory dashboard error:', error);
+    console.error("Inventory dashboard error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // ✅ FEATURE #40: GET STOCK MOVEMENTS
-router.get('/inventory/:productId/movements', async (req, res) => {
+router.get("/inventory/:productId/movements", async (req, res) => {
   try {
     const { productId } = req.params;
     const organizationId = req.user.organizationId;
@@ -1105,10 +1345,10 @@ router.get('/inventory/:productId/movements', async (req, res) => {
     const product = await Product.findOne({
       _id: productId,
       organization: organizationId,
-    }).populate('stockMovements.performedBy', 'name email');
+    }).populate("stockMovements.performedBy", "name email");
 
     if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
+      return res.status(404).json({ error: "Product not found" });
     }
 
     res.json({
@@ -1119,7 +1359,7 @@ router.get('/inventory/:productId/movements', async (req, res) => {
       ),
     });
   } catch (error) {
-    console.error('Stock movements error:', error);
+    console.error("Stock movements error:", error);
     res.status(500).json({ error: error.message });
   }
 });
