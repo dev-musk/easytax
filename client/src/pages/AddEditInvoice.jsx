@@ -8,6 +8,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import HSNSearch from "../components/HSNSearch";
 import Layout from "../components/Layout";
 import api from "../utils/api";
+import ItemScanner from "../components/ItemScanner";
 import {
   ArrowLeft,
   Save,
@@ -20,6 +21,7 @@ import {
   Upload, // ← ADD THIS
   X, // ← ADD THIS (if not already there)
   Paperclip, // ← ADD THIS
+  Camera,
 } from "lucide-react";
 
 // Number to words converter (client-side)
@@ -145,6 +147,9 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(false);
   const [gstinEntries, setGstinEntries] = useState([]);
+  // ✅ FEATURE #30: Barcode Scanner State
+  const [showScanner, setShowScanner] = useState(false);
+  const [currentItemIndex, setCurrentItemIndex] = useState(null);
 
   const [formData, setFormData] = useState({
     clientId: "",
@@ -671,148 +676,149 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (duplicateCheckResult?.exists && !isEditing) {
-    alert("Invoice number already exists! Please change the invoice number.");
-    return;
-  }
+    if (duplicateCheckResult?.exists && !isEditing) {
+      alert("Invoice number already exists! Please change the invoice number.");
+      return;
+    }
 
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    const totals = calculateTotals();
+    try {
+      const totals = calculateTotals();
 
-    const invoiceData = {
-      clientId: formData.clientId,
-      invoiceType: formData.invoiceType,
-      invoiceDate: formData.invoiceDate,
-      dueDate: formData.dueDate,
-      poNumber: formData.poNumber,
-      poDate: formData.poDate || null,
-      contractNumber: formData.contractNumber,
-      salesPersonName: formData.salesPersonName,
-      // ✅ FIX: Keep productId for stock validation
-      items: formData.items.map((item) => ({
-        description: item.description,
-        hsnSacCode: item.hsnSacCode,
-        quantity: item.quantity,
-        unit: item.unit,
-        rate: item.rate,
-        gstRate: item.gstRate,
-        itemType: item.itemType,
-        discountType: item.discountType,
-        discountValue: item.discountValue,
-        discountAmount: item.discountAmount,
-        taxableAmount: item.taxableAmount,
-        amount: item.amount,
-        productId: item.productId, // ✅ Include this!
-      })),
-      discountType: formData.discountType,
-      discountValue: formData.discountValue,
-      tdsSection: formData.tdsSection || null,
-      tdsRate: formData.tdsRate || 0,
-      tdsAmount: totals.tdsAmount || 0,
-      tcsApplicable: formData.tcsApplicable,
-      tcsRate: formData.tcsRate || 0,
-      reverseCharge: formData.reverseCharge,
-      notes: formData.notes,
-      eInvoice: formData.eInvoice,
-      eWayBill: formData.eWayBill,
-      template: formData.template,
-      selectedGstin: formData.selectedGstin || null,
-    };
+      const invoiceData = {
+        clientId: formData.clientId,
+        invoiceType: formData.invoiceType,
+        invoiceDate: formData.invoiceDate,
+        dueDate: formData.dueDate,
+        poNumber: formData.poNumber,
+        poDate: formData.poDate || null,
+        contractNumber: formData.contractNumber,
+        salesPersonName: formData.salesPersonName,
+        // ✅ FIX: Keep productId for stock validation
+        items: formData.items.map((item) => ({
+          description: item.description,
+          hsnSacCode: item.hsnSacCode,
+          quantity: item.quantity,
+          unit: item.unit,
+          rate: item.rate,
+          gstRate: item.gstRate,
+          itemType: item.itemType,
+          discountType: item.discountType,
+          discountValue: item.discountValue,
+          discountAmount: item.discountAmount,
+          taxableAmount: item.taxableAmount,
+          amount: item.amount,
+          productId: item.productId, // ✅ Include this!
+        })),
+        discountType: formData.discountType,
+        discountValue: formData.discountValue,
+        tdsSection: formData.tdsSection || null,
+        tdsRate: formData.tdsRate || 0,
+        tdsAmount: totals.tdsAmount || 0,
+        tcsApplicable: formData.tcsApplicable,
+        tcsRate: formData.tcsRate || 0,
+        reverseCharge: formData.reverseCharge,
+        notes: formData.notes,
+        eInvoice: formData.eInvoice,
+        eWayBill: formData.eWayBill,
+        template: formData.template,
+        selectedGstin: formData.selectedGstin || null,
+      };
 
-    console.log("Submitting invoice data:", invoiceData);
+      console.log("Submitting invoice data:", invoiceData);
 
-    if (isEditing) {
-      await api.put(`/api/invoices/${id}`, invoiceData);
+      if (isEditing) {
+        await api.put(`/api/invoices/${id}`, invoiceData);
 
-      if (selectedFiles.length > 0) {
-        setUploadProgress(true);
-        const fileFormData = new FormData();
-        selectedFiles.forEach((file) => {
-          fileFormData.append("files", file);
-        });
-
-        try {
-          await api.post(`/api/invoices/${id}/attachments`, fileFormData, {
-            headers: { "Content-Type": "multipart/form-data" },
+        if (selectedFiles.length > 0) {
+          setUploadProgress(true);
+          const fileFormData = new FormData();
+          selectedFiles.forEach((file) => {
+            fileFormData.append("files", file);
           });
-        } catch (uploadError) {
-          console.error("Upload error:", uploadError);
-          alert("Invoice saved but file upload failed");
-        }
-        setUploadProgress(false);
-      }
 
-      alert("Invoice updated successfully");
-    } else {
-      const response = await api.post("/api/invoices", invoiceData);
-      const createdInvoiceId = response.data._id;
-
-      if (selectedFiles.length > 0) {
-        setUploadProgress(true);
-        const fileFormData = new FormData();
-        selectedFiles.forEach((file) => {
-          fileFormData.append("files", file);
-        });
-
-        try {
-          await api.post(
-            `/api/invoices/${createdInvoiceId}/attachments`,
-            fileFormData,
-            {
+          try {
+            await api.post(`/api/invoices/${id}/attachments`, fileFormData, {
               headers: { "Content-Type": "multipart/form-data" },
-            }
-          );
-        } catch (uploadError) {
-          console.error("Upload error:", uploadError);
-          alert("Invoice created but file upload failed");
+            });
+          } catch (uploadError) {
+            console.error("Upload error:", uploadError);
+            alert("Invoice saved but file upload failed");
+          }
+          setUploadProgress(false);
         }
-        setUploadProgress(false);
-      }
 
-      alert(
-        isDuplicate
-          ? "Duplicate invoice created successfully"
-          : "Invoice created successfully"
-      );
-    }
-    navigate("/invoices");
-  } catch (error) {
-    console.error("Error saving invoice:", error);
-    console.error("Error details:", error.response?.data);
-    
-    // ✅ Better error handling
-    if (error.response?.status === 400) {
-      const errorData = error.response.data;
-      
-      if (errorData.error === "Insufficient stock") {
-        let alertMessage = "⚠️ INSUFFICIENT STOCK\n\n";
-        
-        if (errorData.stockErrors && Array.isArray(errorData.stockErrors)) {
-          errorData.stockErrors.forEach((stockError) => {
-            alertMessage += `📦 ${stockError.product}\n`;
-            alertMessage += `   Requested: ${stockError.requested} ${stockError.unit}\n`;
-            alertMessage += `   Available: ${stockError.available} ${stockError.unit}\n\n`;
-          });
-        } else if (errorData.details) {
-          alertMessage += errorData.details + "\n\n";
-        }
-        
-        alertMessage += "Please reduce the quantity or choose different items.";
-        alert(alertMessage);
+        alert("Invoice updated successfully");
       } else {
-        alert(errorData.error || "Validation failed");
+        const response = await api.post("/api/invoices", invoiceData);
+        const createdInvoiceId = response.data._id;
+
+        if (selectedFiles.length > 0) {
+          setUploadProgress(true);
+          const fileFormData = new FormData();
+          selectedFiles.forEach((file) => {
+            fileFormData.append("files", file);
+          });
+
+          try {
+            await api.post(
+              `/api/invoices/${createdInvoiceId}/attachments`,
+              fileFormData,
+              {
+                headers: { "Content-Type": "multipart/form-data" },
+              }
+            );
+          } catch (uploadError) {
+            console.error("Upload error:", uploadError);
+            alert("Invoice created but file upload failed");
+          }
+          setUploadProgress(false);
+        }
+
+        alert(
+          isDuplicate
+            ? "Duplicate invoice created successfully"
+            : "Invoice created successfully"
+        );
       }
-    } else {
-      alert(error.response?.data?.error || "Failed to save invoice");
+      navigate("/invoices");
+    } catch (error) {
+      console.error("Error saving invoice:", error);
+      console.error("Error details:", error.response?.data);
+
+      // ✅ Better error handling
+      if (error.response?.status === 400) {
+        const errorData = error.response.data;
+
+        if (errorData.error === "Insufficient stock") {
+          let alertMessage = "⚠️ INSUFFICIENT STOCK\n\n";
+
+          if (errorData.stockErrors && Array.isArray(errorData.stockErrors)) {
+            errorData.stockErrors.forEach((stockError) => {
+              alertMessage += `📦 ${stockError.product}\n`;
+              alertMessage += `   Requested: ${stockError.requested} ${stockError.unit}\n`;
+              alertMessage += `   Available: ${stockError.available} ${stockError.unit}\n\n`;
+            });
+          } else if (errorData.details) {
+            alertMessage += errorData.details + "\n\n";
+          }
+
+          alertMessage +=
+            "Please reduce the quantity or choose different items.";
+          alert(alertMessage);
+        } else {
+          alert(errorData.error || "Validation failed");
+        }
+      } else {
+        alert(error.response?.data?.error || "Failed to save invoice");
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const totals = calculateTotals();
 
@@ -1281,10 +1287,26 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
 
                   {/* Product Selection */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <label className="block text-xs font-medium text-blue-900 mb-2">
-                      <Package className="w-4 h-4 inline mr-1" />
-                      Select from Item Catalog (or choose Custom Item)
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-medium text-blue-900">
+                        <Package className="w-4 h-4 inline mr-1" />
+                        Select from Item Catalog (or choose Custom Item)
+                      </label>
+
+                      {/* ✅ SCAN BARCODE BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentItemIndex(index);
+                          setShowScanner(true);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs font-medium shadow-sm"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        Scan Barcode
+                      </button>
+                    </div>
+
                     <select
                       value={item.productId}
                       onChange={(e) =>
@@ -2318,6 +2340,44 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
             </button>
           </div>
         </form>
+        {/* ✅ FEATURE #30: BARCODE SCANNER MODAL */}
+        {showScanner && currentItemIndex !== null && (
+          <ItemScanner
+            onItemScanned={(product) => {
+              // Auto-fill item with scanned product
+              const newItems = [...formData.items];
+              const quantity = newItems[currentItemIndex].quantity || 1;
+              const rate = product.rate;
+              const baseAmount = quantity * rate;
+
+              newItems[currentItemIndex] = {
+                productId: product._id,
+                description: product.name,
+                hsnSacCode: product.hsnSacCode || "",
+                quantity: quantity,
+                unit: product.unit,
+                rate: rate,
+                gstRate: product.gstRate,
+                itemType: product.type,
+                discountType: "PERCENTAGE",
+                discountValue: 0,
+                discountAmount: 0,
+                taxableAmount: baseAmount,
+                amount: baseAmount,
+              };
+
+              setFormData({ ...formData, items: newItems });
+              setShowScanner(false);
+              setCurrentItemIndex(null);
+            }}
+            onClose={() => {
+              setShowScanner(false);
+              setCurrentItemIndex(null);
+            }}
+          />
+        )}
+
+        {/* Form Actions */}
       </div>
     </Layout>
   );

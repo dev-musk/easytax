@@ -9,6 +9,7 @@
     "postinstall": "chmod +x node_modules/.bin/vite"
   },
   "dependencies": {
+    "@ericblade/quagga2": "^1.12.1",
     "axios": "^1.6.5",
     "lucide-react": "^0.303.0",
     "qrcode": "^1.5.4",
