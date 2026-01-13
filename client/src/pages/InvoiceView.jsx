@@ -30,6 +30,9 @@ import {
   Paperclip,
   Eye,
   Palette,
+  Zap,
+  ChevronDown,
+  FileMinus,
 } from "lucide-react";
 
 export default function InvoiceView() {
@@ -43,6 +46,7 @@ export default function InvoiceView() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [upiQrCode, setUpiQrCode] = useState(null);
   const [showUpiQr, setShowUpiQr] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(true); // Default open
 
   // ✅ FEATURE #32: Quick Notes
   const [showNoteInput, setShowNoteInput] = useState(false);
@@ -340,6 +344,30 @@ export default function InvoiceView() {
     }
   };
 
+  const handleDownloadWithAttachments = async (invoiceId) => {
+    try {
+      const response = await api.get(
+        `/api/invoices/${invoiceId}/download-with-attachments`,
+        { responseType: "blob" }
+      );
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `Invoice_${invoice.invoiceNumber}_Complete.zip`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download files");
+    }
+  };
+
   // ✅ FEATURE #36: Delete Attachment
   const handleDeleteAttachment = async (attachmentId) => {
     if (!confirm("Delete this attachment?")) return;
@@ -412,6 +440,7 @@ export default function InvoiceView() {
     <Layout>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* ✅ FEATURE #37: ALL Action Buttons in Detail View */}
+        {/* ✅ IMPROVED: Collapsible Quick Actions */}
         <div className="print:hidden space-y-4">
           {/* Back Button - Separate Row */}
           <div>
@@ -424,107 +453,155 @@ export default function InvoiceView() {
             </button>
           </div>
 
-          {/* Action Buttons - Responsive Grid */}
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
-              Quick Actions
-            </p>
+          {/* ✅ NEW: Collapsible Quick Actions Container */}
+          <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setShowQuickActions(!showQuickActions)}
+              className="w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-gray-900">
+                    Quick Actions
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {showQuickActions
+                      ? "Click to collapse"
+                      : "Click to expand actions"}
+                  </p>
+                </div>
+              </div>
+              <ChevronDown
+                className={`w-5 h-5 text-gray-400 transition-transform ${
+                  showQuickActions ? "rotate-180" : ""
+                }`}
+              />
+            </button>
 
-            {/* Primary Actions Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-3">
-              {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
-                <>
+            {/* Collapsible Content */}
+            {showQuickActions && (
+              <div className="p-4 bg-white border-t border-gray-200 space-y-3">
+                {/* Primary Actions Row */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {invoice.status !== "PAID" &&
+                    invoice.status !== "CANCELLED" && (
+                      <>
+                        <button
+                          onClick={() => setShowPaymentModal(true)}
+                          className="flex flex-col items-center gap-2 bg-gradient-to-br from-green-500 to-green-600 text-white px-4 py-3 rounded-lg hover:from-green-600 hover:to-green-700 transition-all hover:shadow-lg text-sm font-medium"
+                        >
+                          <CreditCard className="w-5 h-5" />
+                          <span className="text-xs">Record Payment</span>
+                        </button>
+
+                        <button
+                          onClick={generateUpiQr}
+                          className="flex flex-col items-center gap-2 bg-gradient-to-br from-purple-500 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all hover:shadow-lg text-sm font-medium"
+                        >
+                          <QrCode className="w-5 h-5" />
+                          <span className="text-xs">UPI QR</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowShareModal(true);
+                            if (invoice.shareEnabled && invoice.shareToken) {
+                              setShareData({
+                                shareUrl: `${window.location.origin}/public/invoice/${invoice.shareToken}`,
+                                shareToken: invoice.shareToken,
+                                shareEnabled: invoice.shareEnabled,
+                                shareExpiresAt: invoice.shareExpiresAt,
+                              });
+                            }
+                          }}
+                          className="flex flex-col items-center gap-2 bg-gradient-to-br from-yellow-500 to-yellow-600 text-white px-4 py-3 rounded-lg hover:from-yellow-600 hover:to-yellow-700 transition-all hover:shadow-lg text-sm font-medium"
+                        >
+                          <Link2 className="w-5 h-5" />
+                          <span className="text-xs">Share Link</span>
+                        </button>
+                      </>
+                    )}
+
+                  {invoice.status !== "PAID" && invoice.client?.email && (
+                    <button
+                      onClick={handleSendReminder}
+                      className="flex flex-col items-center gap-2 bg-gradient-to-br from-orange-500 to-orange-600 text-white px-4 py-3 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all hover:shadow-lg text-sm font-medium"
+                    >
+                      <Mail className="w-5 h-5" />
+                      <span className="text-xs">Send Reminder</span>
+                    </button>
+                  )}
+
+                  {invoice.invoiceType === "TAX_INVOICE" &&
+                    invoice.status !== "CANCELLED" && (
+                      <button
+                        onClick={() => {
+                          navigate("/sales/credit-note/add", {
+                            // ✅ Changed: added /add
+                            state: {
+                              duplicateFrom: invoice, // ✅ Changed: use duplicateFrom
+                              isDuplicate: true, // ✅ Changed: flag as duplicate
+                              invoiceType: "CREDIT_NOTE", // ✅ Added: set type
+                            },
+                          });
+                        }}
+                        className="flex flex-col items-center gap-2 bg-gradient-to-br from-red-500 to-red-600 text-white px-4 py-3 rounded-lg hover:from-red-600 hover:to-red-700 transition-all hover:shadow-lg text-sm font-medium"
+                      >
+                        <FileMinus className="w-5 h-5" />
+                        <span className="text-xs">Create Credit Note</span>
+                      </button>
+                    )}
+
                   <button
-                    onClick={() => setShowPaymentModal(true)}
-                    className="flex flex-col items-center gap-2 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-all hover:shadow-lg text-sm font-medium"
+                    onClick={() => setShowTemplateSettings(true)}
+                    className="flex flex-col items-center gap-2 bg-gradient-to-br from-pink-500 to-pink-600 text-white px-4 py-3 rounded-lg hover:from-pink-600 hover:to-pink-700 transition-all hover:shadow-lg text-sm font-medium"
                   >
-                    <CreditCard className="w-5 h-5" />
-                    <span className="text-xs">Record Payment</span>
+                    <Palette className="w-5 h-5" />
+                    <span className="text-xs">Customize</span>
                   </button>
 
                   <button
-                    onClick={generateUpiQr}
-                    className="flex flex-col items-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition-all hover:shadow-lg text-sm font-medium"
+                    onClick={handleDownloadPDF}
+                    className="flex flex-col items-center gap-2 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white px-4 py-3 rounded-lg hover:from-indigo-600 hover:to-indigo-700 transition-all hover:shadow-lg text-sm font-medium"
                   >
-                    <QrCode className="w-5 h-5" />
-                    <span className="text-xs">UPI QR</span>
+                    <Download className="w-5 h-5" />
+                    <span className="text-xs">Download PDF</span>
+                  </button>
+                </div>
+
+                {/* Secondary Actions Row */}
+                <div className="grid grid-cols-3 md:grid-cols-4 gap-2 pt-3 border-t border-gray-200">
+                  <button
+                    onClick={handlePrint}
+                    className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span className="hidden sm:inline">Print</span>
                   </button>
 
                   <button
-                    onClick={() => {
-                      setShowShareModal(true);
-                      if (invoice.shareEnabled && invoice.shareToken) {
-                        setShareData({
-                          shareUrl: `${window.location.origin}/public/invoice/${invoice.shareToken}`,
-                          shareToken: invoice.shareToken,
-                          shareEnabled: invoice.shareEnabled,
-                          shareExpiresAt: invoice.shareExpiresAt,
-                        });
-                      }
-                    }}
-                    className="flex flex-col items-center gap-2 bg-indigo-600 text-white px-4 py-3 rounded-lg hover:bg-indigo-700 transition-all hover:shadow-lg text-sm font-medium"
+                    onClick={handleDuplicate}
+                    className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                   >
-                    <Link2 className="w-5 h-5" />
-                    <span className="text-xs">Share Link</span>
+                    <Copy className="w-4 h-4" />
+                    <span className="hidden sm:inline">Duplicate</span>
                   </button>
-                </>
-              )}
 
-              {invoice.status !== "PAID" && invoice.client?.email && (
-                <button
-                  onClick={handleSendReminder}
-                  className="flex flex-col items-center gap-2 bg-orange-600 text-white px-4 py-3 rounded-lg hover:bg-orange-700 transition-all hover:shadow-lg text-sm font-medium"
-                >
-                  <Mail className="w-5 h-5" />
-                  <span className="text-xs">Send Reminder</span>
-                </button>
-              )}
-              {/* ← ADD THIS BUTTON */}
-              <button
-                onClick={() => setShowTemplateSettings(true)}
-                className="flex flex-col items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-pink-700 hover:to-purple-700 transition-all hover:shadow-lg text-sm font-medium"
-              >
-                <Palette className="w-5 h-5" />
-                <span className="text-xs">Customize Design</span>
-              </button>
-
-              <button
-                onClick={handleDownloadPDF}
-                className="flex flex-col items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-all hover:shadow-lg text-sm font-medium"
-              >
-                <Download className="w-5 h-5" />
-                <span className="text-xs">Download PDF</span>
-              </button>
-            </div>
-
-            {/* Secondary Actions Row */}
-            <div className="grid grid-cols-3 md:grid-cols-4 gap-2 pt-3 border-t border-gray-200">
-              <button
-                onClick={handlePrint}
-                className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-              >
-                <Printer className="w-4 h-4" />
-                <span className="hidden sm:inline">Print</span>
-              </button>
-
-              <button
-                onClick={handleDuplicate}
-                className="flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-              >
-                <Copy className="w-4 h-4" />
-                <span className="hidden sm:inline">Duplicate</span>
-              </button>
-
-              {invoice.status !== "PAID" && (
-                <button
-                  onClick={handleDelete}
-                  className="flex items-center justify-center gap-2 bg-white border border-red-300 text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors text-sm"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Delete</span>
-                </button>
-              )}
-            </div>
+                  {invoice.status !== "PAID" && (
+                    <button
+                      onClick={handleDelete}
+                      className="flex items-center justify-center gap-2 bg-white border border-red-300 text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors text-sm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -709,18 +786,38 @@ export default function InvoiceView() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() =>
-                        handleDownloadAttachment(
-                          attachment._id,
-                          attachment.originalName
-                        )
-                      }
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
+                    {/* Replace the single download button with: */}
+                    <div className="relative group">
+                      <button
+                        onClick={handleDownloadPDF}
+                        className="flex flex-col items-center gap-2 bg-gradient-to-br from-blue-500 to-blue-600 text-white px-4 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all hover:shadow-lg text-sm font-medium"
+                      >
+                        <Download className="w-5 h-5" />
+                        <span className="text-xs">Download</span>
+                      </button>
+
+                      {/* ✅ NEW: Dropdown Menu */}
+                      {invoice.attachments?.length > 0 && (
+                        <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 min-w-[200px]">
+                          <button
+                            onClick={handleDownloadPDF}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 rounded-t-lg flex items-center gap-2"
+                          >
+                            <Download className="w-4 h-4" />
+                            📄 PDF Only
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDownloadWithAttachments(invoice._id)
+                            }
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 rounded-b-lg border-t flex items-center gap-2"
+                          >
+                            <Download className="w-4 h-4" />
+                            📦 PDF + Attachments (ZIP)
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => handleDeleteAttachment(attachment._id)}
                       className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
@@ -742,8 +839,9 @@ export default function InvoiceView() {
           style={{ fontFamily: styles.fontFamily }}
         >
           {/* Invoice Header */}
-         <div className={`flex justify-between items-start mb-8 ${styles.headerClass}`}>
-
+          <div
+            className={`flex justify-between items-start mb-8 ${styles.headerClass}`}
+          >
             <div className="flex-1">
               {organization?.logo &&
                 organization?.displaySettings?.showCompanyLogo !== false && (
@@ -758,7 +856,9 @@ export default function InvoiceView() {
                   </div>
                 )}
 
-              <h1 className={`text-2xl font-bold ${styles.themeColor.text} mb-2`}>
+              <h1
+                className={`text-2xl font-bold ${styles.themeColor.text} mb-2`}
+              >
                 {organization?.name || "Company Name"}
               </h1>
               {organization?.address && (
@@ -820,11 +920,13 @@ export default function InvoiceView() {
                 <p className="font-bold text-gray-900 text-base">
                   {invoice.client?.companyName}
                 </p>
+
                 {invoice.client?.billingAddress && (
                   <p className="text-sm text-gray-600">
                     {invoice.client.billingAddress}
                   </p>
                 )}
+
                 {invoice.client?.billingCity &&
                   invoice.client?.billingState && (
                     <p className="text-sm text-gray-600">
@@ -832,15 +934,31 @@ export default function InvoiceView() {
                       {invoice.client.billingState}
                     </p>
                   )}
+
                 {invoice.client?.gstin && (
                   <p className="text-sm text-gray-600">
                     <span className="font-semibold">GSTIN:</span>{" "}
                     {invoice.client.gstin}
                   </p>
                 )}
+
+                {/* ✅ NEW: Show Email */}
+                {invoice.client?.email && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold">Email:</span>{" "}
+                    {invoice.client.email}
+                  </p>
+                )}
+
+                {/* ✅ NEW: Show Phone */}
+                {invoice.client?.phone && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold">Phone:</span>{" "}
+                    {invoice.client.phone}
+                  </p>
+                )}
               </div>
             </div>
-
             {invoice.client?.shippingAddress && (
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">
@@ -853,6 +971,7 @@ export default function InvoiceView() {
                   <p className="text-sm text-gray-600">
                     {invoice.client.shippingAddress}
                   </p>
+
                   {invoice.client?.shippingCity &&
                     invoice.client?.shippingState && (
                       <p className="text-sm text-gray-600">
@@ -860,6 +979,22 @@ export default function InvoiceView() {
                         {invoice.client.shippingState}
                       </p>
                     )}
+
+                  {/* ✅ NEW: Shipping Email */}
+                  {invoice.client?.shippingEmail && (
+                    <p className="text-sm text-gray-600">
+                      <span className="font-semibold">Email:</span>{" "}
+                      {invoice.client.shippingEmail}
+                    </p>
+                  )}
+
+                  {/* ✅ NEW: Shipping Phone */}
+                  {invoice.client?.shippingPhone && (
+                    <p className="text-sm text-gray-600">
+                      <span className="font-semibold">Phone:</span>{" "}
+                      {invoice.client.shippingPhone}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -958,8 +1093,9 @@ export default function InvoiceView() {
                     HSN/SAC
                   </th>
                   <th className="text-center py-3 px-2 text-xs font-semibold text-gray-700 uppercase">
-                    Qty
-                  </th>
+                    Qty & Unit
+                  </th>{" "}
+                  {/* ✅ CHANGED: Added "& Unit" */}
                   <th className="text-right py-3 px-2 text-xs font-semibold text-gray-700 uppercase">
                     Rate
                   </th>
@@ -981,12 +1117,24 @@ export default function InvoiceView() {
                       <p className="text-sm font-medium text-gray-900">
                         {item.description}
                       </p>
+                      {/* ✅ NEW: Show sub-description if present */}
+                      {item.subDescription && (
+                        <p className="text-xs text-gray-500 italic mt-1">
+                          {item.subDescription}
+                        </p>
+                      )}
                     </td>
                     <td className="py-3 px-2 text-center text-sm text-gray-600">
                       {item.hsnSacCode || "-"}
                     </td>
                     <td className="py-3 px-2 text-center text-sm text-gray-900">
-                      {item.quantity}
+                      {/* ✅ FIXED: Show UOM prominently */}
+                      <span className="font-semibold">{item.quantity}</span>
+                      {item.unit && (
+                        <span className="ml-1 text-xs text-gray-600 uppercase font-medium">
+                          {item.unit}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-2 text-right text-sm text-gray-900">
                       ₹{item.rate?.toLocaleString("en-IN")}
@@ -1074,7 +1222,9 @@ export default function InvoiceView() {
                 </div>
               )}
 
-            <div className={`flex justify-between py-3 border-t-2 border-gray-300 ${styles.themeColor.primary} text-white px-4 rounded-lg`}>
+              <div
+                className={`flex justify-between py-3 border-t-2 border-gray-300 ${styles.themeColor.primary} text-white px-4 rounded-lg`}
+              >
                 <span className="text-base font-bold">Total Amount</span>
                 <span className="text-base font-bold">
                   ₹{invoice.totalAmount?.toLocaleString("en-IN")}
@@ -1105,7 +1255,9 @@ export default function InvoiceView() {
           {/* Amount in Words */}
           {organization?.displaySettings?.amountInWords !== false &&
             invoice.amountInWords && (
-              <div className={`mb-8 ${styles.themeColor.light} border-l-4 ${styles.themeColor.border} p-4 rounded`}>
+              <div
+                className={`mb-8 ${styles.themeColor.light} border-l-4 ${styles.themeColor.border} p-4 rounded`}
+              >
                 <p className="text-xs text-gray-500 uppercase mb-1">
                   Amount in Words
                 </p>

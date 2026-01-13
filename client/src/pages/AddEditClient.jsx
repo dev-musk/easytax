@@ -1,13 +1,13 @@
 // ============================================
 // FILE: client/src/pages/AddEditClient.jsx
-// UPDATED - Replace your current AddEditClient.jsx
+// ✅ FIXED: Added Multi-Branch Management (Features #12-13)
 // ============================================
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../utils/api';
-import { ArrowLeft, Save, Upload, X, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, Upload, X, Image as ImageIcon, Plus, Trash2, Building2 } from 'lucide-react';
 
 export default function AddEditClient() {
   const navigate = useNavigate();
@@ -17,16 +17,17 @@ export default function AddEditClient() {
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
- const [formData, setFormData] = useState({
+  
+  const [formData, setFormData] = useState({
     companyName: '',
-    displayName: '', // NEW
+    displayName: '',
     contactPerson: '',
     email: '',
     phone: '',
     gstin: '',
     pan: '',
-    cin: '', // NEW
-    gstTreatment: 'REGULAR', // NEW
+    cin: '',
+    gstTreatment: 'REGULAR',
     isTaxable: true,
     logo: '',
     billingAddress: '',
@@ -40,6 +41,8 @@ export default function AddEditClient() {
     sameAsBilling: true,
     paymentTerms: 30,
     defaultTaxRate: 18,
+    // ✅ NEW: Branches
+    branches: [],
   });
 
   useEffect(() => {
@@ -51,7 +54,10 @@ export default function AddEditClient() {
   const fetchClient = async () => {
     try {
       const response = await api.get(`/api/clients/${id}`);
-      setFormData(response.data);
+      setFormData({
+        ...response.data,
+        branches: response.data.branches || [],
+      });
       if (response.data.logo) {
         setLogoPreview(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/${response.data.logo}`);
       }
@@ -91,30 +97,76 @@ export default function AddEditClient() {
     }));
   };
 
+  // ✅ NEW: Branch Management Functions
+  const addBranch = () => {
+    setFormData(prev => ({
+      ...prev,
+      branches: [
+        ...prev.branches,
+        {
+          branchName: '',
+          address: '',
+          city: '',
+          state: '',
+          pincode: '',
+          gstin: '',
+          contactPerson: '',
+          email: '',
+          phone: '',
+          isDefault: prev.branches.length === 0, // First branch is default
+          isActive: true,
+        }
+      ]
+    }));
+  };
+
+  const removeBranch = (index) => {
+    if (!confirm('Remove this branch?')) return;
+    setFormData(prev => ({
+      ...prev,
+      branches: prev.branches.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateBranch = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      branches: prev.branches.map((branch, i) => 
+        i === index ? { ...branch, [field]: value } : branch
+      )
+    }));
+  };
+
+  const setDefaultBranch = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      branches: prev.branches.map((branch, i) => ({
+        ...branch,
+        isDefault: i === index
+      }))
+    }));
+  };
+
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert('File size must be less than 5MB');
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('Please upload an image file');
       return;
     }
 
-    // Show preview immediately
     const reader = new FileReader();
     reader.onloadend = () => {
       setLogoPreview(reader.result);
     };
     reader.readAsDataURL(file);
 
-    // If editing, upload immediately
     if (isEditing) {
       setUploadingLogo(true);
       const formData = new FormData();
@@ -193,7 +245,6 @@ export default function AddEditClient() {
                   Company Logo
                 </label>
                 <div className="flex items-start gap-4">
-                  {/* Logo Preview */}
                   <div className="flex-shrink-0">
                     {logoPreview ? (
                       <div className="relative">
@@ -217,7 +268,6 @@ export default function AddEditClient() {
                     )}
                   </div>
 
-                  {/* Upload Button */}
                   <div className="flex-1">
                     <label className="cursor-pointer">
                       <input
@@ -237,11 +287,6 @@ export default function AddEditClient() {
                     <p className="text-xs text-gray-500 mt-2">
                       PNG, JPG, GIF up to 5MB. Recommended: 300x300px
                     </p>
-                    {!isEditing && logoPreview && (
-                      <p className="text-xs text-orange-600 mt-1">
-                        ⚠️ Logo will be uploaded after saving the client
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>
@@ -333,7 +378,6 @@ export default function AddEditClient() {
                 />
               </div>
 
-              {/* NEW: CIN Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   CIN (Corporate ID)
@@ -352,7 +396,6 @@ export default function AddEditClient() {
                 </p>
               </div>
 
-              {/* NEW: Display Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Display Name
@@ -370,7 +413,6 @@ export default function AddEditClient() {
                 </p>
               </div>
 
-              {/* NEW: GST Treatment Dropdown */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   GST Treatment <span className="text-red-500">*</span>
@@ -565,6 +607,216 @@ export default function AddEditClient() {
                     maxLength={6}
                   />
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ✅ NEW: Branch Locations Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                  Branch Locations
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Manage multiple branch locations for this client
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addBranch}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Branch
+              </button>
+            </div>
+
+            {formData.branches.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600 mb-2">No branches added yet</p>
+                <p className="text-sm text-gray-500">
+                  Add branches if this client has multiple locations
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {formData.branches.map((branch, index) => (
+                  <div
+                    key={index}
+                    className={`border rounded-lg p-4 ${
+                      branch.isDefault ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-700">
+                          Branch {index + 1}
+                        </span>
+                        {branch.isDefault && (
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                            Default
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!branch.isDefault && (
+                          <button
+                            type="button"
+                            onClick={() => setDefaultBranch(index)}
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            Set as Default
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeBranch(index)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Branch Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.branchName}
+                          onChange={(e) => updateBranch(index, 'branchName', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g., Bangalore Office"
+                          required
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Address
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.address}
+                          onChange={(e) => updateBranch(index, 'address', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Street address"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          City
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.city}
+                          onChange={(e) => updateBranch(index, 'city', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Bangalore"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          State
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.state}
+                          onChange={(e) => updateBranch(index, 'state', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Karnataka"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Pincode
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.pincode}
+                          onChange={(e) => updateBranch(index, 'pincode', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="560001"
+                          maxLength={6}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          GSTIN
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.gstin}
+                          onChange={(e) => updateBranch(index, 'gstin', e.target.value.toUpperCase())}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="29AABCU9603R1Z5"
+                          maxLength={15}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Contact Person
+                        </label>
+                        <input
+                          type="text"
+                          value={branch.contactPerson}
+                          onChange={(e) => updateBranch(index, 'contactPerson', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Branch Manager"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={branch.email}
+                          onChange={(e) => updateBranch(index, 'email', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="branch@company.com"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone
+                        </label>
+                        <input
+                          type="tel"
+                          value={branch.phone}
+                          onChange={(e) => updateBranch(index, 'phone', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="+91 98765 43210"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`branch-active-${index}`}
+                          checked={branch.isActive}
+                          onChange={(e) => updateBranch(index, 'isActive', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <label htmlFor={`branch-active-${index}`} className="text-sm font-medium text-gray-700">
+                          Branch is active
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

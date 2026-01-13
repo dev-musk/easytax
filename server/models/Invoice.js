@@ -23,6 +23,7 @@ const invoiceItemSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  
   hsnSacCode: {
     type: String,
     required: true,
@@ -86,6 +87,7 @@ const invoiceItemSchema = new mongoose.Schema({
     required: true,
   },
 
+
   // Total with GST
   totalAmount: {
     type: Number,
@@ -94,6 +96,7 @@ const invoiceItemSchema = new mongoose.Schema({
 });
 
 const invoiceSchema = new mongoose.Schema(
+
   {
     invoiceNumber: {
       type: String,
@@ -126,6 +129,7 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
 
+    
     // Additional Fields
     poNumber: {
       type: String,
@@ -142,7 +146,18 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-
+    grnNumber: {
+      type: String,
+      trim: true,
+    },
+    preparedBy: {
+      type: String,
+      trim: true,
+    },
+    verifiedBy: {
+      type: String,
+      trim: true,
+    },
     // Reference numbers
     quotationNumber: String,
     dcNumber: String,

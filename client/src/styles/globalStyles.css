@@ -1,0 +1,624 @@
+/* ============================================
+   FILE: client/src/styles/globalStyles.css
+
+/* ============================================
+   BASE STYLES & TRANSITIONS
+   ============================================ */
+
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
+}
+
+
+
+/* Light mode backgrounds */
+.bg-gray-50 {
+  background-color: #f9fafb;
+}
+
+/* Dark mode overrides */
+.dark {
+  color-scheme: dark;
+}
+
+.dark .bg-gray-50 {
+  background-color: #111827 !important;
+}
+
+.dark .bg-white {
+  background-color: #1f2937 !important;
+}
+
+/* Main app container */
+.app-container {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+}
+
+.dark .app-container {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+}
+
+/* Card backgrounds with subtle gradient */
+.card,
+.bg-white {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(229, 231, 235, 0.5) !important;
+}
+
+.dark .card,
+.dark .bg-white {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%) !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(55, 65, 81, 0.5) !important;
+}
+
+/* ============================================
+   DARK MODE - BEAUTIFUL STYLING
+   ============================================ */
+
+/* Dark mode text colors */
+.dark {
+  color: #f3f4f6;
+}
+
+.dark .text-gray-900 {
+  color: #f9fafb !important;
+}
+
+.dark .text-gray-700 {
+  color: #d1d5db !important;
+}
+
+.dark .text-gray-600 {
+  color: #9ca3af !important;
+}
+
+.dark .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+/* Dark mode backgrounds */
+.dark .bg-gray-100 {
+  background-color: #374151 !important;
+}
+
+.dark .bg-gray-200 {
+  background-color: #4b5563 !important;
+}
+
+/* Dark mode borders */
+.dark .border-gray-200 {
+  border-color: #374151 !important;
+}
+
+.dark .border-gray-300 {
+  border-color: #4b5563 !important;
+}
+
+/* Dark mode cards with glow */
+.dark .card:hover {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* ============================================
+   FIX #2: ZOOM/SIZE ISSUES
+   ============================================ */
+
+html {
+  font-size: 14px;
+}
+
+@media (max-width: 1680px) {
+  html { font-size: 13px; }
+}
+
+@media (max-width: 1366px) {
+  html { font-size: 12px; }
+}
+
+@media (max-width: 1024px) {
+  html { font-size: 11px; }
+}
+
+@media (min-width: 1920px) {
+  html { font-size: 15px; }
+}
+
+/* Card padding reduction */
+.card,
+.bg-white.rounded-lg {
+  padding: 0.875rem !important;
+}
+
+/* Metric value size control */
+.text-3xl {
+  font-size: 1.75rem !important;
+  line-height: 1.2 !important;
+}
+
+.text-2xl {
+  font-size: 1.35rem !important;
+  line-height: 1.3 !important;
+}
+
+.text-xl {
+  font-size: 1.15rem !important;
+}
+
+/* Icon sizing */
+svg,
+.lucide {
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+}
+
+.w-5.h-5 {
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+}
+
+.w-6.h-6 {
+  width: 1.35rem !important;
+  height: 1.35rem !important;
+}
+
+/* Button sizing */
+button,
+.btn {
+  padding: 0.5rem 1rem !important;
+  font-size: 0.875rem !important;
+}
+
+/* Table cells */
+td,
+th {
+  padding: 0.5rem !important;
+}
+
+/* Input fields */
+input,
+select,
+textarea {
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.875rem !important;
+}
+
+/* ============================================
+   ENHANCED DESIGN ELEMENTS
+   ============================================ */
+
+/* Modern card hover effect */
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12) !important;
+  transition: all 0.3s ease;
+}
+
+/* Button enhancements */
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+.dark .btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+/* Status badges */
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-paid {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+}
+
+.dark .status-paid {
+  background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+  color: #86efac;
+}
+
+.status-pending {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+}
+
+.dark .status-pending {
+  background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+  color: #fde047;
+}
+
+.status-overdue {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+}
+
+.dark .status-overdue {
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+  color: #fca5a5;
+}
+
+/* ============================================
+   TABLE IMPROVEMENTS
+   ============================================ */
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+thead {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.dark thead {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+}
+
+thead th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #475569;
+  padding: 0.75rem 1rem !important;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.dark thead th {
+  color: #9ca3af;
+  border-bottom-color: #374151;
+}
+
+tbody tr {
+  transition: all 0.2s ease;
+}
+
+tbody tr:hover {
+  background: linear-gradient(90deg, #f8fafc 0%, #ffffff 100%);
+  transform: scale(1.01);
+}
+
+.dark tbody tr:hover {
+  background: linear-gradient(90deg, #374151 0%, #1f2937 100%);
+}
+
+/* ============================================
+   FORM IMPROVEMENTS
+   ============================================ */
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  transition: all 0.2s ease;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background: #1f2937;
+  color: #f9fafb;
+  border-color: #374151;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.375rem;
+  display: block;
+}
+
+.dark label {
+  color: #d1d5db;
+}
+
+/* ============================================
+   DARK MODE SPECIFIC IMPROVEMENTS
+   ============================================ */
+
+/* Dashboard cards in dark mode */
+.dark .metric-card {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  border-left: 4px solid;
+}
+
+/* Chart container dark mode */
+.dark .recharts-wrapper {
+  background: #1f2937;
+}
+
+/* Scrollbar dark mode */
+.dark ::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+}
+
+/* Dropdown menu dark mode */
+.dark .dropdown-menu,
+.dark .absolute {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+/* Loading spinner dark mode */
+.dark .loading-spinner {
+  border-color: rgba(59, 130, 246, 0.2);
+  border-top-color: #3b82f6;
+}
+
+/* ============================================
+   SIDEBAR DARK MODE
+   ============================================ */
+
+.dark aside {
+  background: #1f2937 !important;
+  border-right-color: #374151 !important;
+}
+
+/* ============================================
+   HEADER/TOPBAR DARK MODE
+   ============================================ */
+
+.dark header {
+  background: #1f2937 !important;
+  border-bottom-color: #374151 !important;
+}
+
+/* ============================================
+   BEAUTIFUL DARK MODE ACCENTS
+   ============================================ */
+
+/* Glow effects for dark mode */
+.dark .bg-blue-600,
+.dark .bg-blue-500 {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+/* Dark mode hover states */
+.dark button:hover {
+  background-color: #374151 !important;
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: #374151 !important;
+}
+
+.dark .hover\:bg-gray-200:hover {
+  background-color: #4b5563 !important;
+}
+
+/* Dark mode active states */
+.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+.dark .text-blue-600 {
+  color: #60a5fa !important;
+}
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+
+.loading-spinner {
+  border: 3px solid rgba(102, 126, 234, 0.1);
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  width: 2.5rem;
+  height: 2.5rem;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s ease-in-out infinite;
+  border-radius: 0.375rem;
+}
+
+.dark .skeleton {
+  background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================
+   ANIMATION IMPROVEMENTS
+   ============================================ */
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #764ba2 0%, #667eea 100%);
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .gradient-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Shadow variations */
+.shadow-sm {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-md {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-xl {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+}
+
+.dark .shadow-sm {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.dark .shadow-md {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dark .shadow-lg {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
+.dark .shadow-xl {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  .card,
+  .bg-white {
+    background: white !important;
+    box-shadow: none !important;
+  }
+
+  .sidebar {
+    display: none;
+  }
+}
+
+/* ============================================
+   RESPONSIVE IMPROVEMENTS
+   ============================================ */
+
+@media (max-width: 640px) {
+  .card {
+    padding: 0.75rem !important;
+  }
+
+  .text-3xl {
+    font-size: 1.5rem !important;
+  }
+
+  .text-2xl {
+    font-size: 1.25rem !important;
+  }
+
+  button {
+    padding: 0.375rem 0.75rem !important;
+    font-size: 0.8125rem !important;
+  }
+
+  table {
+    font-size: 0.8125rem;
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY IMPROVEMENTS
+   ============================================ */
+
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+@media (prefers-contrast: high) {
+  .card,
+  .bg-white {
+    border: 2px solid #000 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

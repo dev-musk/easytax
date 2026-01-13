@@ -1,11 +1,10 @@
 // ============================================
 // FILE: server/utils/pdfGenerator.js
-// ENHANCED - Includes ALL Phase 1 Features
-// Logo, Bank Details, Signature, Amount in Words, CIN, Notes
+// ✅ FINAL FIX: Always show GRN/DC field + Prepared/Verified sections
 // ============================================
 
 export const generateInvoicePDF = (invoice, organization) => {
-  // ✅ FEATURE #20: Get template settings with defaults
+  // Template settings with defaults
   const templateSettings = invoice.templateSettings || {
     fontFamily: "Roboto",
     headerStyle: "BOXED",
@@ -27,12 +26,15 @@ export const generateInvoicePDF = (invoice, organization) => {
   const currentTheme =
     themeColors[templateSettings.themeColor] || themeColors.BLUE;
 
+  // Date format with hyphens and short year (13-Jan-26)
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[d.getMonth()];
+    const year = String(d.getFullYear()).slice(-2);
+    return `${day}-${month}-${year}`;
   };
 
   const formatCurrency = (amount) => {
@@ -41,6 +43,23 @@ export const generateInvoicePDF = (invoice, organization) => {
       maximumFractionDigits: 2,
     })}`;
   };
+
+  // Calculate CGST/SGST rate
+  const calculateGSTRate = () => {
+    if (invoice.cgst > 0 && invoice.subtotal > 0) {
+      const taxableAmount = invoice.subtotal - (invoice.discountAmount || 0);
+      const cgstRate = ((invoice.cgst / taxableAmount) * 100).toFixed(2);
+      const sgstRate = ((invoice.sgst / taxableAmount) * 100).toFixed(2);
+      return { cgst: cgstRate, sgst: sgstRate };
+    } else if (invoice.igst > 0 && invoice.subtotal > 0) {
+      const taxableAmount = invoice.subtotal - (invoice.discountAmount || 0);
+      const igstRate = ((invoice.igst / taxableAmount) * 100).toFixed(2);
+      return { igst: igstRate };
+    }
+    return {};
+  };
+
+  const gstRates = calculateGSTRate();
 
   const isInterstate = invoice.igst > 0;
   const showLogo =
@@ -55,6 +74,10 @@ export const generateInvoicePDF = (invoice, organization) => {
   const showAmountInWords =
     organization?.displaySettings?.amountInWords !== false &&
     invoice.amountInWords;
+
+  // ✅ FIX: Always show Additional Info if ANY field exists (including conditional fields)
+  const hasAdditionalInfo = invoice.poNumber || invoice.poDate || invoice.contractNumber || 
+                            invoice.salesPersonName || invoice.grnNumber || invoice.preparedBy || invoice.verifiedBy || true; // Always show section
 
   return `
 <!DOCTYPE html>
@@ -71,180 +94,206 @@ export const generateInvoicePDF = (invoice, organization) => {
     }
 
     body {
-        font-family: '${
-          templateSettings.fontFamily
-        }', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 12px;
-      line-height: 1.6;
+      font-family: '${
+        templateSettings.fontFamily
+      }', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 10px;
+      line-height: 1.4;
       color: #333;
-      padding: 20px;
+      padding: 15mm;
       background: white;
     }
 
     .invoice-container {
-  max-width: 210mm;
-  margin: 0 auto;
-  background: white;
-  ${templateSettings.borderStyle === "FULL" ? "border: 2px solid #ccc;" : ""}
-  ${
-    templateSettings.borderStyle === "PARTIAL"
-      ? "border-top: 2px solid #ccc; border-bottom: 2px solid #ccc;"
-      : ""
-  }
-  padding: 20px;
-}
-
-   .invoice-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 30px;
-  ${
-    templateSettings.headerStyle === "BOXED"
-      ? `
-    background: ${currentTheme.light};
-    border: 2px solid ${currentTheme.primary};
-    border-radius: 8px;
-    padding: 20px;
-  `
-      : `
-    padding-bottom: 20px;
-    border-bottom: 3px solid ${currentTheme.primary};
-  `
-  }
-}
-
-    .company-logo {
-      max-height: 80px;
-      max-width: 200px;
-      object-fit: contain;
-      margin-bottom: 15px;
+      max-width: 210mm;
+      margin: 0 auto;
+      background: white;
+      ${
+        templateSettings.borderStyle === "FULL" ? "border: 2px solid #ccc;" : ""
+      }
+      ${
+        templateSettings.borderStyle === "PARTIAL"
+          ? "border-top: 2px solid #ccc; border-bottom: 2px solid #ccc;"
+          : ""
+      }
+      padding: 15px;
     }
 
-   .company-details h1 {
-  font-size: 24px;
-  color: ${currentTheme.primary};
-  margin-bottom: 10px;
-  text-align: ${templateSettings.textAlignment.toLowerCase()};
-}
+    .invoice-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      ${
+        templateSettings.headerStyle === "BOXED"
+          ? `
+        background: ${currentTheme.light};
+        border: 2px solid ${currentTheme.primary};
+        border-radius: 6px;
+        padding: 15px;
+      `
+          : `
+        padding-bottom: 15px;
+        border-bottom: 3px solid ${currentTheme.primary};
+      `
+      }
+    }
+
+    .company-logo {
+      max-height: 70px;
+      max-width: 180px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+
+    .company-details h1 {
+      font-size: 20px;
+      color: ${currentTheme.primary};
+      margin-bottom: 8px;
+      text-align: ${templateSettings.textAlignment.toLowerCase()};
+    }
+
     .company-details p {
-      margin: 3px 0;
-      font-size: 11px;
+      margin: 2px 0;
+      font-size: 9px;
       color: #666;
+      line-height: 1.4;
     }
 
     .invoice-title {
       text-align: right;
     }
 
-   .invoice-title h2 {
-  font-size: 28px;
-  color: ${currentTheme.primary};
-  margin-bottom: 10px;
-}
+    .invoice-title h2 {
+      font-size: 24px;
+      color: ${currentTheme.primary};
+      margin-bottom: 8px;
+    }
 
     .invoice-title .invoice-number {
-      font-size: 14px;
+      font-size: 12px;
       font-weight: bold;
       color: #333;
     }
 
     .invoice-title .status-badge {
       display: inline-block;
-      padding: 5px 15px;
-      border-radius: 20px;
-      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 9px;
       font-weight: bold;
-      margin-top: 10px;
+      margin-top: 6px;
     }
 
-    .status-paid {
-      background-color: #dcfce7;
-      color: #166534;
-    }
-
-    .status-pending {
-      background-color: #fef3c7;
-      color: #92400e;
-    }
-
-    .status-overdue {
-      background-color: #fee2e2;
-      color: #991b1b;
-    }
-
-    .status-partially-paid {
-      background-color: #dbeafe;
-      color: #1e40af;
-    }
-
-    .status-draft {
-      background-color: #f3f4f6;
-      color: #374151;
-    }
+    .status-paid { background-color: #dcfce7; color: #166534; }
+    .status-pending { background-color: #fef3c7; color: #92400e; }
+    .status-overdue { background-color: #fee2e2; color: #991b1b; }
+    .status-partially-paid { background-color: #dbeafe; color: #1e40af; }
+    .status-draft { background-color: #f3f4f6; color: #374151; }
 
     .parties-section {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 30px;
-      margin-bottom: 30px;
+      gap: 20px;
+      margin-bottom: 20px;
     }
 
     .party-box {
       border: 1px solid #e5e7eb;
-      padding: 15px;
-      border-radius: 8px;
+      padding: 12px;
+      border-radius: 6px;
       background: #f9fafb;
     }
 
     .party-box h3 {
-      font-size: 11px;
+      font-size: 9px;
       text-transform: uppercase;
       color: #6b7280;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       font-weight: 600;
     }
 
     .party-box .company-name {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: bold;
       color: #1f2937;
-      margin-bottom: 8px;
+      margin-bottom: 5px;
     }
 
     .party-box p {
-      font-size: 11px;
+      font-size: 9px;
       color: #4b5563;
       margin: 2px 0;
+      line-height: 1.4;
     }
 
     .dates-section {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-      margin-bottom: 30px;
-      padding: 15px;
+      gap: 15px;
+      margin-bottom: 20px;
+      padding: 12px;
       background: #f9fafb;
-      border-radius: 8px;
+      border-radius: 6px;
     }
 
     .date-item h4 {
-      font-size: 10px;
+      font-size: 8px;
       text-transform: uppercase;
       color: #6b7280;
-      margin-bottom: 5px;
+      margin-bottom: 4px;
     }
 
     .date-item p {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 600;
       color: #1f2937;
+    }
+
+    .additional-info-section {
+      margin-bottom: 15px;
+      padding: 12px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+    }
+
+    .additional-info-section h3 {
+      font-size: 9px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .info-item p:first-child {
+      font-size: 8px;
+      color: #6b7280;
+      margin-bottom: 3px;
+    }
+
+    .info-item p:last-child {
+      font-size: 10px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    /* ✅ NEW: Style for empty fields */
+    .info-item .empty-field {
+      color: #9ca3af;
+      font-style: italic;
     }
 
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
 
     .items-table thead {
@@ -252,89 +301,99 @@ export const generateInvoicePDF = (invoice, organization) => {
     }
 
     .items-table th {
-      padding: 12px 8px;
+      padding: 8px 6px;
       text-align: left;
-      font-size: 10px;
+      font-size: 8px;
       text-transform: uppercase;
       color: #374151;
       font-weight: 600;
       border-bottom: 2px solid #e5e7eb;
     }
 
-    .items-table th.text-center {
-      text-align: center;
-    }
-
-    .items-table th.text-right {
-      text-align: right;
-    }
+    .items-table th.text-center { text-align: center; }
+    .items-table th.text-right { text-align: right; }
 
     .items-table tbody tr {
       border-bottom: 1px solid #e5e7eb;
     }
 
     .items-table td {
-      padding: 12px 8px;
-      font-size: 11px;
+      padding: 8px 6px;
+      font-size: 9px;
       color: #1f2937;
+      line-height: 1.4;
     }
 
-    .items-table td.text-center {
-      text-align: center;
-    }
-
-    .items-table td.text-right {
-      text-align: right;
-    }
+    .items-table td.text-center { text-align: center; }
+    .items-table td.text-right { text-align: right; }
 
     .items-table .item-description {
       font-weight: 600;
       color: #111827;
+      font-size: 10px;
+    }
+
+    .items-table .item-sub-description {
+      font-size: 8px;
+      color: #666;
+      font-style: italic;
+      margin-top: 3px;
+      line-height: 1.3;
+    }
+
+    .qty-unit {
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .qty-unit .unit {
+      color: #6b7280;
+      font-size: 8px;
+      text-transform: uppercase;
+      margin-left: 2px;
     }
 
     .totals-section {
       display: flex;
       justify-content: flex-end;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
 
     .totals-box {
-      width: 400px;
+      width: 380px;
       border: 1px solid #e5e7eb;
-      border-radius: 8px;
+      border-radius: 6px;
       overflow: hidden;
     }
 
     .totals-row {
       display: flex;
       justify-content: space-between;
-      padding: 10px 15px;
+      padding: 8px 12px;
       border-bottom: 1px solid #e5e7eb;
     }
 
-    .totals-row:last-child {
-      border-bottom: none;
-    }
+    .totals-row:last-child { border-bottom: none; }
 
     .totals-row .label {
-      font-size: 11px;
+      font-size: 9px;
       color: #6b7280;
     }
 
     .totals-row .value {
-      font-size: 11px;
+      font-size: 9px;
       font-weight: 600;
       color: #1f2937;
     }
 
-    .totals-row.subtotal {
-      background: #f9fafb;
+    .totals-row.subtotal { background: #f9fafb; }
+
+    .totals-row.total {
+      background: ${currentTheme.primary};
+      color: white;
+      font-size: 11px;
+      padding: 10px 12px;
     }
-.totals-row.total {
-  background: ${currentTheme.primary};
-  color: white;
-  font-size: 13px;
-}
 
     .totals-row.total .label,
     .totals-row.total .value {
@@ -342,13 +401,8 @@ export const generateInvoicePDF = (invoice, organization) => {
       font-weight: bold;
     }
 
-    .totals-row.discount .value {
-      color: #dc2626;
-    }
-
-    .totals-row.paid .value {
-      color: #16a34a;
-    }
+    .totals-row.discount .value { color: #dc2626; }
+    .totals-row.paid .value { color: #16a34a; }
 
     .totals-row.balance {
       background: #fee2e2;
@@ -360,97 +414,146 @@ export const generateInvoicePDF = (invoice, organization) => {
       font-weight: bold;
     }
 
-    /* Amount in Words Section */
+    .gst-filing-status {
+      margin-bottom: 15px;
+      padding: 10px 12px;
+      background: #dcfce7;
+      border-left: 3px solid #16a34a;
+      border-radius: 4px;
+    }
+
+    .gst-filing-status h4 {
+      font-size: 8px;
+      text-transform: uppercase;
+      color: #166534;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .filing-indicators {
+      display: flex;
+      gap: 20px;
+      font-size: 9px;
+    }
+
+    .filing-indicators .filed {
+      color: #15803d;
+      font-weight: 600;
+    }
+
+    .filing-indicators .pending {
+      color: #92400e;
+      font-weight: 600;
+    }
+
     .amount-in-words {
-      margin-bottom: 20px;
-      padding: 15px;
+      margin-bottom: 15px;
+      padding: 10px 12px;
       background: #dbeafe;
-      border-left: 4px solid #2563eb;
+      border-left: 3px solid #2563eb;
       border-radius: 4px;
     }
 
     .amount-in-words h4 {
-      font-size: 10px;
+      font-size: 8px;
       text-transform: uppercase;
       color: #1e40af;
-      margin-bottom: 8px;
+      margin-bottom: 5px;
       font-weight: 600;
     }
 
     .amount-in-words p {
-      font-size: 12px;
+      font-size: 10px;
       color: #1e3a8a;
       font-weight: 600;
     }
 
+    .reverse-charge-notice {
+      margin-bottom: 15px;
+      padding: 10px 12px;
+      background: #ffedd5;
+      border-left: 3px solid #ea580c;
+      border-radius: 4px;
+    }
+
+    .reverse-charge-notice p {
+      font-size: 9px;
+      color: #9a3412;
+    }
+
+    .reverse-charge-notice p:first-child {
+      font-weight: bold;
+      margin-bottom: 3px;
+    }
+
     .notes-section {
-      margin-bottom: 20px;
-      padding: 15px;
+      margin-bottom: 15px;
+      padding: 10px 12px;
       background: #fffbeb;
-      border-left: 4px solid #f59e0b;
+      border-left: 3px solid #f59e0b;
       border-radius: 4px;
     }
 
     .notes-section h4 {
-      font-size: 11px;
+      font-size: 8px;
       text-transform: uppercase;
       color: #92400e;
-      margin-bottom: 8px;
+      margin-bottom: 5px;
       font-weight: 600;
     }
 
     .notes-section p {
-      font-size: 11px;
+      font-size: 9px;
       color: #78350f;
       white-space: pre-wrap;
+      line-height: 1.5;
     }
 
     .terms-section {
-      margin-bottom: 20px;
-      padding: 15px;
+      margin-bottom: 15px;
+      padding: 10px 12px;
       background: #f9fafb;
       border-radius: 4px;
     }
 
     .terms-section h4 {
-      font-size: 11px;
+      font-size: 8px;
       text-transform: uppercase;
       color: #4b5563;
-      margin-bottom: 8px;
+      margin-bottom: 5px;
       font-weight: 600;
     }
 
     .terms-section p {
-      font-size: 10px;
+      font-size: 8px;
       color: #6b7280;
-      line-height: 1.8;
+      line-height: 1.6;
     }
 
-    /* Bank Details Section */
     .bank-details {
-      margin-bottom: 20px;
-      padding: 15px;
+      margin-bottom: 15px;
+      padding: 10px 12px;
       background: #dcfce7;
       border: 1px solid #86efac;
       border-radius: 4px;
     }
 
     .bank-details h4 {
-      font-size: 11px;
+      font-size: 8px;
       text-transform: uppercase;
       color: #166534;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       font-weight: 600;
     }
 
     .bank-details-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      gap: 8px;
     }
 
     .bank-detail-item {
-      font-size: 10px;
+      font-size: 8px;
     }
 
     .bank-detail-item .label {
@@ -461,55 +564,80 @@ export const generateInvoicePDF = (invoice, organization) => {
     .bank-detail-item .value {
       color: #14532d;
       font-weight: 600;
-      margin-left: 5px;
+      margin-left: 4px;
+    }
+
+    .authorization-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 15px;
+      padding: 10px 12px;
+      background: #f3f4f6;
+      border-radius: 4px;
+    }
+
+    .authorization-item h5 {
+      font-size: 8px;
+      color: #6b7280;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .authorization-item p {
+      font-size: 10px;
+      font-weight: 600;
+      color: #1f2937;
     }
 
     .footer {
       text-align: center;
-      padding-top: 20px;
-      border-top: 2px solid #e5e7eb;
+      padding-top: 15px;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 15px;
     }
 
     .footer p {
-      font-size: 10px;
+      font-size: 8px;
       color: #9ca3af;
+      line-height: 1.5;
     }
 
     .signature-section {
-      margin-top: 40px;
+      margin-top: 20px;
       text-align: right;
-      padding-right: 15px;
+      padding-right: 20px;
     }
 
     .signature-image {
-      max-height: 60px;
-      max-width: 150px;
+      max-height: 50px;
+      max-width: 140px;
       object-fit: contain;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
 
     .signature-line {
       display: inline-block;
-      width: 200px;
+      width: 180px;
       border-top: 2px solid #333;
-      padding-top: 10px;
-      margin-top: 60px;
+      padding-top: 8px;
+      margin-top: 40px;
     }
 
     .signature-text {
-      font-size: 11px;
+      font-size: 9px;
       color: #6b7280;
     }
 
     .signature-name {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: #1f2937;
-      margin-top: 5px;
+      margin-top: 4px;
     }
 
     .signature-designation {
-      font-size: 10px;
+      font-size: 8px;
       color: #6b7280;
     }
 
@@ -624,6 +752,11 @@ export const generateInvoicePDF = (invoice, organization) => {
             ? `<p><strong>Email:</strong> ${invoice.client.email}</p>`
             : ""
         }
+        ${
+          invoice.client?.phone
+            ? `<p><strong>Phone:</strong> ${invoice.client.phone}</p>`
+            : ""
+        }
       </div>
       
       ${
@@ -636,6 +769,16 @@ export const generateInvoicePDF = (invoice, organization) => {
         ${
           invoice.client?.shippingCity && invoice.client?.shippingState
             ? `<p>${invoice.client.shippingCity}, ${invoice.client.shippingState}</p>`
+            : ""
+        }
+        ${
+          invoice.client?.shippingEmail
+            ? `<p><strong>Email:</strong> ${invoice.client.shippingEmail}</p>`
+            : ""
+        }
+        ${
+          invoice.client?.shippingPhone
+            ? `<p><strong>Phone:</strong> ${invoice.client.shippingPhone}</p>`
             : ""
         }
       </div>
@@ -663,75 +806,60 @@ export const generateInvoicePDF = (invoice, organization) => {
       </div>
     </div>
 
-    <!-- ✅ FIXED: Additional Information Section -->
-${
-  invoice.poNumber ||
-  invoice.poDate ||
-  invoice.contractNumber ||
-  invoice.salesPersonName
-    ? `
-<div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-  <h3 class="text-xs font-semibold text-gray-500 uppercase mb-3">Additional Information</h3>
-  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+    <!-- ✅ FIX: ALWAYS show Additional Information section with ALL fields (including empty ones) -->
     ${
-      invoice.poNumber
+      hasAdditionalInfo
         ? `
-    <div>
-      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">PO Number</p>
-      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${invoice.poNumber}</p>
+    <div class="additional-info-section">
+      <h3>Additional Information</h3>
+      <div class="info-grid">
+        <div class="info-item">
+          <p>PO Number</p>
+          <p${!invoice.poNumber ? ' class="empty-field"' : ""}>${
+            invoice.poNumber || "___"
+          }</p>
+        </div>
+        <div class="info-item">
+          <p>PO Date</p>
+          <p${!invoice.poDate ? ' class="empty-field"' : ""}>${
+            invoice.poDate ? formatDate(invoice.poDate) : "___"
+          }</p>
+        </div>
+        <div class="info-item">
+          <p>GRN/DC Number</p>
+          <p${!invoice.grnNumber ? ' class="empty-field"' : ""}>${
+            invoice.grnNumber || "___"
+          }</p>
+        </div>
+        <div class="info-item">
+          <p>Contract Number</p>
+          <p${!invoice.contractNumber ? ' class="empty-field"' : ""}>${
+            invoice.contractNumber || "___"
+          }</p>
+        </div>
+        <div class="info-item">
+          <p>Sales Person</p>
+          <p${!invoice.salesPersonName ? ' class="empty-field"' : ""}>${
+            invoice.salesPersonName || "___"
+          }</p>
+        </div>
+      </div>
     </div>
     `
         : ""
     }
-    ${
-      invoice.poDate
-        ? `
-    <div>
-      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">PO Date</p>
-      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${formatDate(
-        invoice.poDate
-      )}</p>
-    </div>
-    `
-        : ""
-    }
-    ${
-      invoice.contractNumber
-        ? `
-    <div>
-      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">Contract Number</p>
-      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${invoice.contractNumber}</p>
-    </div>
-    `
-        : ""
-    }
-    ${
-      invoice.salesPersonName
-        ? `
-    <div>
-      <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">Sales Person</p>
-      <p style="font-size: 12px; font-weight: 600; color: #1f2937;">${invoice.salesPersonName}</p>
-    </div>
-    `
-        : ""
-    }
-  </div>
-</div>
-`
-    : ""
-}
 
     <!-- Items Table -->
     <table class="items-table">
       <thead>
         <tr>
-          <th style="width: 5%;">#</th>
+          <th style="width: 4%;">#</th>
           <th style="width: 35%;">Description</th>
           <th class="text-center" style="width: 10%;">HSN/SAC</th>
-          <th class="text-center" style="width: 8%;">Qty</th>
+          <th class="text-center" style="width: 12%;">Qty & Unit</th>
           <th class="text-right" style="width: 12%;">Rate</th>
-          <th class="text-center" style="width: 8%;">GST%</th>
-          <th class="text-right" style="width: 12%;">Tax Amount</th>
+          <th class="text-center" style="width: 7%;">GST%</th>
+          <th class="text-right" style="width: 10%;">Tax Amt</th>
           <th class="text-right" style="width: 10%;">Amount</th>
         </tr>
       </thead>
@@ -743,9 +871,18 @@ ${
             <td>${index + 1}</td>
             <td>
               <div class="item-description">${item.description}</div>
+              ${
+                item.subDescription
+                  ? `<div class="item-sub-description">${item.subDescription}</div>`
+                  : ""
+              }
             </td>
             <td class="text-center">${item.hsnSacCode || "-"}</td>
-            <td class="text-center">${item.quantity}</td>
+            <td class="text-center">
+              <span class="qty-unit">
+                ${item.quantity}<span class="unit">${item.unit}</span>
+              </span>
+            </td>
             <td class="text-right">${formatCurrency(item.rate)}</td>
             <td class="text-center">${item.gstRate}%</td>
             <td class="text-right">${formatCurrency(
@@ -786,7 +923,7 @@ ${
           invoice.cgst > 0
             ? `
         <div class="totals-row">
-          <span class="label">CGST</span>
+          <span class="label">CGST ${gstRates.cgst ? `(${gstRates.cgst}%)` : ''}</span>
           <span class="value">${formatCurrency(invoice.cgst)}</span>
         </div>
         `
@@ -797,7 +934,7 @@ ${
           invoice.sgst > 0
             ? `
         <div class="totals-row">
-          <span class="label">SGST</span>
+          <span class="label">SGST ${gstRates.sgst ? `(${gstRates.sgst}%)` : ''}</span>
           <span class="value">${formatCurrency(invoice.sgst)}</span>
         </div>
         `
@@ -808,7 +945,7 @@ ${
           invoice.igst > 0
             ? `
         <div class="totals-row">
-          <span class="label">IGST</span>
+          <span class="label">IGST ${gstRates.igst ? `(${gstRates.igst}%)` : ''}</span>
           <span class="value">${formatCurrency(invoice.igst)}</span>
         </div>
         `
@@ -829,13 +966,13 @@ ${
         ${
           invoice.tcsAmount > 0
             ? `
-<div class="totals-row">
-  <span class="label">TCS (${invoice.tcsRate}%)</span>
-  <span class="value" style="color: #9333ea;">+${formatCurrency(
-    invoice.tcsAmount
-  )}</span>
-</div>
-`
+        <div class="totals-row">
+          <span class="label">TCS (${invoice.tcsRate}%)</span>
+          <span class="value" style="color: #9333ea;">+${formatCurrency(
+            invoice.tcsAmount
+          )}</span>
+        </div>
+        `
             : ""
         }
 
@@ -861,29 +998,54 @@ ${
       </div>
     </div>
 
-    <!-- FIXED: Reverse Charge Notice -->
-${
-  invoice.reverseCharge
-    ? `
-<div class="mb-6 p-4 bg-orange-50 border-l-4 border-orange-500 rounded">
-  <p class="text-sm font-bold text-orange-900 mb-1">
-    ⚠️ REVERSE CHARGE APPLICABLE
-  </p>
-  <p class="text-xs text-orange-700">
-    Tax is payable by the recipient under Section 9(3) of CGST Act, 2017
-  </p>
-</div>
-`
-    : ""
-}
+    <!-- GST Filing Status -->
+    ${
+      invoice.gstFilingStatus?.gstr1Filed ||
+      invoice.gstFilingStatus?.gstr3bFiled
+        ? `
+    <div class="gst-filing-status">
+      <h4>📊 GST Filing Status</h4>
+      <div class="filing-indicators">
+        ${
+          invoice.gstFilingStatus?.gstr1Filed
+            ? '<span class="filed">✓ GSTR-1 Filed</span>'
+            : '<span class="pending">⚠ GSTR-1 Pending</span>'
+        }
+        ${
+          invoice.gstFilingStatus?.gstr3bFiled
+            ? '<span class="filed">✓ GSTR-3B Filed</span>'
+            : '<span class="pending">⚠ GSTR-3B Pending</span>'
+        }
+        ${
+          invoice.gstFilingStatus?.filingPeriod
+            ? `<span style="color: #1f2937;">Period: ${invoice.gstFilingStatus.filingPeriod}</span>`
+            : ""
+        }
+      </div>
+    </div>
+    `
+        : ""
+    }
 
-    <!-- Amount in Words - CRITICAL GST REQUIREMENT -->
+    <!-- Amount in Words -->
     ${
       showAmountInWords
         ? `
     <div class="amount-in-words">
       <h4>Amount in Words</h4>
       <p>${invoice.amountInWords}</p>
+    </div>
+    `
+        : ""
+    }
+
+    <!-- Reverse Charge Notice -->
+    ${
+      invoice.reverseCharge
+        ? `
+    <div class="reverse-charge-notice">
+      <p>⚠️ REVERSE CHARGE APPLICABLE</p>
+      <p>Tax is payable by the recipient under Section 9(3) of CGST Act, 2017</p>
     </div>
     `
         : ""
@@ -905,14 +1067,11 @@ ${
     <div class="terms-section">
       <h4>Terms & Conditions</h4>
       <p>
-        1. Payment is due within the specified due date.<br>
-        2. Please include invoice number with payment.<br>
-        3. Late payments may incur additional charges.<br>
-        4. Goods once sold cannot be returned or exchanged.
+        1. Payment is due within the specified due date. 2. Please include invoice number with payment. 3. Late payments may incur additional charges. 4. Goods once sold cannot be returned or exchanged.
       </p>
     </div>
 
-    <!-- Bank Details for Payment -->
+    <!-- Bank Details -->
     ${
       showBankDetails
         ? `
@@ -955,6 +1114,18 @@ ${
         : ""
     }
 
+    <!-- Prepared By / Verified By - ALWAYS SHOW -->
+    <div class="authorization-section">
+      <div class="authorization-item">
+        <h5>Prepared By</h5>
+        <p>${invoice.preparedBy || "_______________"}</p>
+      </div>
+      <div class="authorization-item">
+        <h5>Verified By</h5>
+        <p>${invoice.verifiedBy || "_______________"}</p>
+      </div>
+    </div>
+
     <!-- Signature -->
     ${
       showSignature
@@ -993,11 +1164,15 @@ ${
       <p>For any queries, please contact: ${organization.email || ""} | ${
     organization.phone || ""
   }</p>
+      <p style="margin-top: 10px; font-size: 10px;">
+        <a href="/" style="color: #2563eb; text-decoration: none;">
+          Powered by EasyTax ERP
+        </a>
+      </p>
     </div>
   </div>
 
   <script>
-    // Auto print when opened in new window
     window.onload = function() {
       setTimeout(function() {
         window.print();

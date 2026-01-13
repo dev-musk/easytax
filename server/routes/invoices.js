@@ -14,6 +14,7 @@ import GRN from "../models/GRN.js";
 import mongoose from "mongoose";
 import { calculateGSTBreakdown } from "../utils/gstCalculator.js";
 import { amountToWords } from "../utils/numberToWords.js";
+import { extractTextFromImage } from "../utils/extractTextFromImage.js"
 import crypto from "crypto";
 import uploadInvoiceAttachments from "../config/invoiceAttachmentsMulter.js";
 import {
@@ -24,6 +25,7 @@ import {
 } from "../middleware/auditMiddleware.js";
 import fs from "fs";
 import path from "path";
+import archiver from "archiver";
 
 const router = express.Router();
 
@@ -144,6 +146,9 @@ router.get("/", async (req, res) => {
             { poNumber: searchRegex },
             { contractNumber: searchRegex },
             { salesPersonName: searchRegex },
+            { grnNumber: searchRegex },
+            { preparedBy: searchRegex },
+            { verifiedBy: searchRegex },
             { "clientData.companyName": searchRegex },
             { "clientData.email": searchRegex },
             { "items.description": searchRegex },
@@ -396,14 +401,22 @@ router.post(
       const amountInWordsText = amountToWords(finalTotal);
 
       // ✅ DECLARE invoiceItems BEFORE using it
+      // ✅ DECLARE invoiceItems BEFORE using it
       const invoiceItems = data.items.map((item) => {
         const gstItem = gstBreakdown.items.find(
           (gst) => gst.description === item.description
         );
+
+        // ✅ FIX: Only include product field if productId is valid
+        const productId =
+          item.productId && item.productId !== "" && item.productId !== "custom"
+            ? item.productId
+            : undefined;
+
         return {
           ...gstItem,
-          productId: item.productId, // ← ADD THIS
-          product: item.productId, // ← ADD THIS for stock reduction
+          // Conditionally include product field only if valid
+          ...(productId ? { product: productId } : {}),
         };
       });
 
@@ -419,6 +432,9 @@ router.post(
         poDate: data.poDate,
         contractNumber: data.contractNumber,
         salesPersonName: data.salesPersonName,
+        grnNumber: data.grnNumber,
+        preparedBy: data.preparedBy,
+        verifiedBy: data.verifiedBy,
         items: invoiceItems, // ✅ NOW it's declared!
 
         subtotal: parseFloat(subtotal.toFixed(2)),
@@ -1191,6 +1207,8 @@ router.get("/:id/upi-qr", async (req, res) => {
 });
 
 // Generate and download PDF
+// In server/routes/invoices.js - Replace the /pdf route:
+
 router.get("/:id/pdf", async (req, res) => {
   try {
     const { id } = req.params;
@@ -1210,14 +1228,29 @@ router.get("/:id/pdf", async (req, res) => {
     const { generateInvoicePDF } = await import("../utils/pdfGenerator.js");
     const html = generateInvoicePDF(invoice, organization);
 
-    res.setHeader("Content-Type", "text/html");
+     
+  // ✅ FIX #9: Better filename format
+  const sanitizedCompanyName = organization.name
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  
+  const sanitizedInvoiceNumber = invoice.invoiceNumber
+    .replace(/\//g, '-');
+  
+  const filename = `${sanitizedCompanyName}_${sanitizedInvoiceNumber}.pdf`;
+  
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${filename}"`
+  );
     res.send(html);
   } catch (error) {
     console.error("PDF generation error:", error);
     res.status(500).json({ error: error.message });
   }
 });
-
 // Send invoice via email
 router.post("/:id/send-email", async (req, res) => {
   try {
@@ -1360,6 +1393,48 @@ router.get("/inventory/:productId/movements", async (req, res) => {
     });
   } catch (error) {
     console.error("Stock movements error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/:id/download-with-attachments", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organization: organizationId,
+    }).populate("client");
+
+    if (!invoice) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    // Create ZIP
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    res.attachment(`Invoice_${invoice.invoiceNumber}_Complete.zip`);
+    archive.pipe(res);
+
+    // Add PDF
+    const organization = await Organization.findById(organizationId);
+    const { generateInvoicePDF } = await import("../utils/pdfGenerator.js");
+    const html = generateInvoicePDF(invoice, organization);
+    archive.append(html, { name: `${invoice.invoiceNumber}.html` });
+
+    // Add attachments
+    if (invoice.attachments && invoice.attachments.length > 0) {
+      invoice.attachments.forEach((attachment) => {
+        if (fs.existsSync(attachment.filepath)) {
+          archive.file(attachment.filepath, { name: attachment.originalName });
+        }
+      });
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    console.error("ZIP creation error:", error);
     res.status(500).json({ error: error.message });
   }
 });

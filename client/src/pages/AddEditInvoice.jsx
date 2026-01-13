@@ -9,6 +9,8 @@ import HSNSearch from "../components/HSNSearch";
 import Layout from "../components/Layout";
 import api from "../utils/api";
 import ItemScanner from "../components/ItemScanner";
+import OCRDocumentScanner from "../components/OCRDocumentScanner";
+import SmartCategorySuggestion from "../components/SmartCategorySuggestion";
 import {
   ArrowLeft,
   Save,
@@ -22,6 +24,7 @@ import {
   X, // ← ADD THIS (if not already there)
   Paperclip, // ← ADD THIS
   Camera,
+  Calendar,
 } from "lucide-react";
 
 // Number to words converter (client-side)
@@ -150,6 +153,11 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   // ✅ FEATURE #30: Barcode Scanner State
   const [showScanner, setShowScanner] = useState(false);
   const [currentItemIndex, setCurrentItemIndex] = useState(null);
+  const [showCategorySuggestion, setShowCategorySuggestion] = useState(false);
+  const [currentItemForSuggestion, setCurrentItemForSuggestion] =
+    useState(null);
+  // ✅ FEATURE #44: OCR Scanner State
+  const [showOCR, setShowOCR] = useState(false);
 
   const [formData, setFormData] = useState({
     clientId: "",
@@ -170,6 +178,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
       {
         productId: "",
         description: "",
+        subDescription: "",
         hsnSacCode: "",
         quantity: 1,
         unit: "PCS",
@@ -217,6 +226,9 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     },
     template: "MODERN",
     selectedGstin: "",
+    grnNumber: "",
+    preparedBy: "",
+    verifiedBy: "",
   });
 
   const fetchGSTINs = async () => {
@@ -256,6 +268,9 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
         poDate: duplicateData.poDate?.split("T")[0] || "",
         contractNumber: duplicateData.contractNumber || "",
         salesPersonName: duplicateData.salesPersonName || "",
+        grnNumber: duplicateData.grnNumber || "",
+        preparedBy: duplicateData.preparedBy || "",
+        verifiedBy: duplicateData.verifiedBy || "",
         items:
           duplicateData.items?.map((item) => ({
             ...item,
@@ -382,6 +397,9 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
         poDate: response.data.poDate?.split("T")[0] || "",
         contractNumber: response.data.contractNumber || "",
         salesPersonName: response.data.salesPersonName || "",
+        grnNumber: response.data.grnNumber || "",
+        preparedBy: response.data.preparedBy || "",
+        verifiedBy: response.data.verifiedBy || "",
         items:
           response.data.items?.map((item) => ({
             ...item,
@@ -514,6 +532,90 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
         },
       ],
     });
+  };
+
+  const handleOCRDataExtracted = (extractedData) => {
+    console.log("📄 OCR Data Received:", extractedData);
+
+    if (!extractedData) {
+      alert("❌ No data extracted. Please try again.");
+      return;
+    }
+
+    // If OCR extracted multiple items, add all of them
+    if (extractedData.items && extractedData.items.length > 0) {
+      console.log(`📦 Processing ${extractedData.items.length} items from OCR`);
+
+      // Replace first empty item with first OCR item
+      const ocrItems = extractedData.items.map((item, idx) => {
+        console.log(`Item ${idx + 1}:`, item.description, "HSN:", item.hsn);
+
+        return {
+          productId: "",
+          description: item.description || "",
+          hsnSacCode: item.hsn || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "PCS",
+          rate: item.rate || 0,
+          gstRate: extractedData.gstRate || 18,
+          itemType: "PRODUCT",
+          discountType: "PERCENTAGE",
+          discountValue: 0,
+          discountAmount: 0,
+          taxableAmount: item.amount || item.quantity * item.rate || 0,
+          amount: item.amount || item.quantity * item.rate || 0,
+        };
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        // Replace the first item if it's empty
+        items:
+          prev.items[0].description === "" && prev.items.length === 1
+            ? ocrItems
+            : [...prev.items, ...ocrItems],
+        // Also populate other invoice header fields
+        vendorName: extractedData.vendorName || prev.vendorName,
+        invoiceNumber: extractedData.invoiceNumber || prev.invoiceNumber,
+        invoiceDate: extractedData.date || prev.invoiceDate,
+        dueDate: extractedData.dueDate || prev.dueDate,
+      }));
+
+      console.log(`✅ Added ${ocrItems.length} items from OCR`);
+      alert(`✅ Successfully added ${ocrItems.length} item(s) from OCR scan!`);
+    } else {
+      // Fallback: single item
+      console.log("Single item mode");
+      const newItem = {
+        productId: "",
+        description: extractedData.description || "Scanned Item",
+        hsnSacCode: extractedData.hsn || "",
+        quantity: 1,
+        unit: "PCS",
+        rate: extractedData.amount || 0,
+        gstRate: extractedData.gstRate || 18,
+        itemType: "PRODUCT",
+        discountType: "PERCENTAGE",
+        discountValue: 0,
+        discountAmount: 0,
+        taxableAmount: extractedData.amount || 0,
+        amount: extractedData.amount || 0,
+      };
+
+      setFormData((prev) => ({
+        ...prev,
+        items:
+          prev.items[0].description === "" && prev.items.length === 1
+            ? [newItem]
+            : [...prev.items, newItem],
+      }));
+
+      console.log("✅ Item added from OCR");
+      alert("✅ Item added from OCR scan!");
+    }
+
+    // Close modal
+    setShowOCR(false);
   };
 
   const handleRemoveItem = (index) => {
@@ -711,7 +813,12 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
           discountAmount: item.discountAmount,
           taxableAmount: item.taxableAmount,
           amount: item.amount,
-          productId: item.productId, // ✅ Include this!
+          // ✅ FIX: Only include productId if it's valid (not empty or "custom")
+          ...(item.productId &&
+          item.productId !== "" &&
+          item.productId !== "custom"
+            ? { productId: item.productId }
+            : {}),
         })),
         discountType: formData.discountType,
         discountValue: formData.discountValue,
@@ -726,6 +833,9 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
         eWayBill: formData.eWayBill,
         template: formData.template,
         selectedGstin: formData.selectedGstin || null,
+        grnNumber: formData.grnNumber, // ✅ Add if missing
+        preparedBy: formData.preparedBy, // ✅ Add if missing
+        verifiedBy: formData.verifiedBy,
       };
 
       console.log("Submitting invoice data:", invoiceData);
@@ -906,6 +1016,130 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 </select>
               </div>
 
+              {/* Branch Selection */}
+              {formData.clientId && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Branch Location
+                    {clients.find((c) => c._id === formData.clientId)?.branches
+                      ?.length > 0 && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        (
+                        {
+                          clients
+                            .find((c) => c._id === formData.clientId)
+                            .branches.filter((b) => b.isActive).length
+                        }{" "}
+                        branches available)
+                      </span>
+                    )}
+                  </label>
+
+                  {/* Check if client has branches */}
+                  {clients.find((c) => c._id === formData.clientId)?.branches
+                    ?.length > 0 ? (
+                    // Client HAS branches - show dropdown
+                    <select
+                      value={formData.selectedBranch || ""}
+                      onChange={(e) => {
+                        const selectedClient = clients.find(
+                          (c) => c._id === formData.clientId
+                        );
+                        const branch = selectedClient?.branches.find(
+                          (b) => b._id === e.target.value
+                        );
+
+                        if (branch) {
+                          setFormData({
+                            ...formData,
+                            selectedBranch: e.target.value,
+                            billingAddress: branch.address,
+                            billingCity: branch.city,
+                            billingState: branch.state,
+                            billingPincode: branch.pincode,
+                          });
+                        } else {
+                          // Clear branch selection - use default client address
+                          setFormData({
+                            ...formData,
+                            selectedBranch: "",
+                            billingAddress: selectedClient?.billingAddress,
+                            billingCity: selectedClient?.billingCity,
+                            billingState: selectedClient?.billingState,
+                            billingPincode: selectedClient?.billingPincode,
+                          });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">
+                        Select Branch (or use default address)
+                      </option>
+                      {clients
+                        .find((c) => c._id === formData.clientId)
+                        .branches.filter((b) => b.isActive)
+                        .map((branch) => (
+                          <option key={branch._id} value={branch._id}>
+                            {branch.branchName} - {branch.city}
+                            {branch.isDefault && " (Default)"}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    // Client DOES NOT have branches - show info message
+                    <div className="relative">
+                      <input
+                        type="text"
+                        disabled
+                        value="No branches configured"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Helper text */}
+                  {clients.find((c) => c._id === formData.clientId)?.branches
+                    ?.length > 0 ? (
+                    <p className="text-xs text-blue-600 mt-1">
+                      💡 Select a branch to use its address, or leave blank to
+                      use default client address
+                    </p>
+                  ) : (
+                    <p className="text-xs text-orange-600 mt-1">
+                      ⚠️ This client has no branches configured. Using default
+                      address.
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            `/clients/edit/${formData.clientId}`,
+                            "_blank"
+                          )
+                        }
+                        className="underline ml-1 hover:text-orange-800"
+                      >
+                        Add branches →
+                      </button>
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* ✅ FEATURE #29: Hide invoice type dropdown when coming from Sales menu */}
               {!propInvoiceType && (
                 <div>
@@ -979,17 +1213,19 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Invoice Date <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  required
-                  value={formData.invoiceDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, invoiceDate: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={formData.invoiceDate}
+                    onChange={(e) =>
+                      setFormData({ ...formData, invoiceDate: e.target.value })
+                    }
+                    className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer hover:border-blue-400 transition-colors"
+                  />
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
               </div>
-
               {/* ✅ FEATURE #5: Payment Terms Dropdown */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1096,6 +1332,25 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                   placeholder="Sales Representative"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+
+              {/* ✅ NEW: GRN/Delivery Challan Number */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  GRN / Delivery Challan No.
+                </label>
+                <input
+                  type="text"
+                  value={formData.grnNumber || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, grnNumber: e.target.value })
+                  }
+                  placeholder="GRN-001 or DC-001"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Reference number for goods receipt or delivery
+                </p>
               </div>
             </div>
           </div>
@@ -1254,14 +1509,28 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
               <h2 className="text-lg font-semibold text-gray-900">
                 Line Items
               </h2>
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Add Item
-              </button>
+              {/* ← ADD THIS: A container with TWO buttons */}
+              <div className="flex gap-3">
+                {/* ← NEW BUTTON: Scan Bill */}
+                <button
+                  type="button"
+                  onClick={() => setShowOCR(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium shadow-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  📄 Scan Bill
+                </button>
+
+                {/* ← EXISTING BUTTON: Add Item (now in the container) */}
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Item
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -1361,6 +1630,25 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                             )
                           }
                           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Sub-Description (Optional)
+                        </label>
+                        <textarea
+                          value={item.subDescription || ""}
+                          onChange={(e) =>
+                            handleItemChange(
+                              index,
+                              "subDescription",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Additional details (e.g., Model: Dell Inspiron 15, Specs: 16GB RAM)"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          rows="2"
                         />
                       </div>
 
@@ -1721,6 +2009,47 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
               </div>
             </div>
 
+            {/* ✅ NEW: Prepared By / Verified By Section */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Document Authorization
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Prepared By
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.preparedBy || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, preparedBy: e.target.value })
+                    }
+                    placeholder="Name of person who prepared this invoice"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Verified By
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.verifiedBy || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, verifiedBy: e.target.value })
+                    }
+                    placeholder="Name of person who verified this invoice"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                💡 These names will appear on the PDF invoice for internal
+                tracking
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Notes
@@ -1735,6 +2064,37 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 placeholder="Payment terms, bank details, or any additional notes..."
               />
             </div>
+            {/* ✅ FEATURE #45: Smart Category Suggestion */}
+            {formData.notes && formData.clientId && (
+              <div className="mt-4">
+                <SmartCategorySuggestion
+                  description={formData.notes}
+                  clientId={formData.clientId}
+                  vendorName={
+                    clients.find((c) => c._id === formData.clientId)
+                      ?.companyName
+                  }
+                  amount={totals.total}
+                  items={formData.items}
+                  onSuggestionAccept={(suggestion) => {
+                    // Auto-fill notes with category tag
+                    setFormData((prev) => ({
+                      ...prev,
+                      notes: `[${suggestion.category}] ${prev.notes}`,
+                    }));
+
+                    // Apply suggested TDS if applicable
+                    if (suggestion.taxCode?.tdsSection) {
+                      handleTDSChange(suggestion.taxCode.tdsSection);
+                    }
+                  }}
+                  onSuggestionReject={() => {
+                    // Optional: Handle rejection
+                    console.log("User rejected AI suggestion");
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* ✅ FEATURE #36: Attachments Upload Section */}
@@ -2339,6 +2699,13 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 : "Create Invoice"}
             </button>
           </div>
+          {/* ✅ FEATURE #44: OCR DOCUMENT SCANNER MODAL */}
+          {showOCR && (
+            <OCRDocumentScanner
+              onDataExtracted={handleOCRDataExtracted}
+              onClose={() => setShowOCR(false)}
+            />
+          )}
         </form>
         {/* ✅ FEATURE #30: BARCODE SCANNER MODAL */}
         {showScanner && currentItemIndex !== null && (

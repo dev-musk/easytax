@@ -64,6 +64,10 @@ import InventoryDashboard from "./pages/InventoryDashboard";
 import GRNList from "./pages/GRNList";
 import AddEditGRN from "./pages/AddEditGRN";
 import GRNView from './pages/GRNView';
+import Profile from './pages/Profile';
+import './styles/globalStyles.css';
+import './styles/colorThemes.css';
+
 
 import { useAuthStore } from "./store/authStore";
 
@@ -97,7 +101,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
-
+        <Route path="/profile" element={<Profile />} />
         {/* ============================================ */}
         {/* CLIENTS */}
         {/* ============================================ */}

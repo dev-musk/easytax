@@ -1,9 +1,3 @@
-// ============================================
-// FILE: server/models/CategoryMapping.js
-// ✅ FEATURE #45: SMART CATEGORIZATION - PERSISTENCE MODEL
-// CREATE THIS NEW FILE
-// ============================================
-
 import mongoose from 'mongoose';
 
 const categoryMappingSchema = new mongoose.Schema(
@@ -14,69 +8,57 @@ const categoryMappingSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    
-    // Vendor/Client association
-    client: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Client',
+    vendorName: {
+      type: String,
+      required: true,
+      trim: true,
       index: true,
     },
-    
-    // Category assigned
     category: {
       type: String,
       required: true,
+      trim: true,
       index: true,
     },
-    
-    // Learning metrics
-    confidence: {
-      type: Number,
-      default: 50,
-      min: 0,
-      max: 100,
+    hsnCode: {
+      type: String,
+      trim: true,
     },
-    
+    gstRate: {
+      type: Number,
+      default: 18,
+    },
+    tdsSection: {
+      type: String,
+      trim: true,
+    },
     usageCount: {
       type: Number,
       default: 1,
+      index: true,
     },
-    
     lastUsed: {
       type: Date,
       default: Date.now,
+      index: true,
     },
-    
-    // Tax implications
-    suggestedGstRate: {
+    confidence: {
       type: Number,
-      enum: [0, 5, 12, 18, 28],
+      default: 0,
+      min: 0,
+      max: 100,
     },
-    
-    suggestedTdsSection: {
+    description: {
       type: String,
+      trim: true,
     },
-    
-    // Keywords that triggered this mapping
-    keywords: [{
-      type: String,
-    }],
-    
-    // User feedback
-    userConfirmed: {
+    isActive: {
       type: Boolean,
-      default: false,
+      default: true,
     },
-    
-    userCorrected: {
-      type: Boolean,
-      default: false,
-    },
-    
-    // Manual override
-    isManual: {
-      type: Boolean,
-      default: false,
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
     },
   },
   {
@@ -84,91 +66,74 @@ const categoryMappingSchema = new mongoose.Schema(
   }
 );
 
-// Compound indexes for fast lookups
-categoryMappingSchema.index({ organization: 1, client: 1, category: 1 });
-categoryMappingSchema.index({ organization: 1, category: 1, confidence: -1 });
+categoryMappingSchema.index({ organization: 1, vendorName: 1, category: 1 }, { unique: true });
 categoryMappingSchema.index({ organization: 1, usageCount: -1 });
+categoryMappingSchema.index({ organization: 1, lastUsed: -1 });
 
-// Static method: Get best category for a client
-categoryMappingSchema.statics.getBestCategory = async function(organizationId, clientId) {
-  const mapping = await this.findOne({
-    organization: organizationId,
-    client: clientId,
-    userConfirmed: true,
-  }).sort({ confidence: -1, usageCount: -1 });
-  
-  return mapping?.category || null;
+categoryMappingSchema.methods.calculateConfidence = function () {
+  const baseConfidence = Math.min(50 + this.usageCount * 5, 95);
+  const daysSinceLastUse = (Date.now() - this.lastUsed) / (1000 * 60 * 60 * 24);
+  const recencyBoost = daysSinceLastUse < 30 ? 5 : 0;
+  this.confidence = Math.min(baseConfidence + recencyBoost, 100);
+  return this.confidence;
 };
 
-// Static method: Update or create mapping
-categoryMappingSchema.statics.recordUsage = async function(organizationId, clientId, category, keywords = []) {
-  const existing = await this.findOne({
-    organization: organizationId,
-    client: clientId,
-    category,
-  });
-  
-  if (existing) {
-    existing.usageCount += 1;
-    existing.lastUsed = new Date();
-    existing.confidence = Math.min(95, existing.confidence + 5); // Increase confidence
-    
-    // Merge keywords
-    const newKeywords = keywords.filter(k => !existing.keywords.includes(k));
-    existing.keywords.push(...newKeywords);
-    
-    await existing.save();
-    return existing;
-  } else {
-    return await this.create({
-      organization: organizationId,
-      client: clientId,
-      category,
-      confidence: 60,
-      keywords,
-      usageCount: 1,
-    });
-  }
-};
-
-// Static method: Learn from user correction
-categoryMappingSchema.statics.learnFromCorrection = async function(
-  organizationId, 
-  clientId, 
-  wrongCategory, 
-  correctCategory
+categoryMappingSchema.statics.findMostUsedForVendor = async function (
+  organizationId,
+  vendorName
 ) {
-  // Decrease confidence in wrong category
-  const wrongMapping = await this.findOne({
+  return this.findOne({
     organization: organizationId,
-    client: clientId,
-    category: wrongCategory,
-  });
-  
-  if (wrongMapping) {
-    wrongMapping.confidence = Math.max(10, wrongMapping.confidence - 15);
-    wrongMapping.userCorrected = true;
-    await wrongMapping.save();
-  }
-  
-  // Increase confidence in correct category
-  const correctMapping = await this.findOneAndUpdate(
+    vendorName: { $regex: vendorName, $options: 'i' },
+    isActive: true,
+  })
+    .sort({ usageCount: -1, lastUsed: -1 })
+    .limit(1);
+};
+
+categoryMappingSchema.statics.getTopCategories = async function (
+  organizationId,
+  limit = 10
+) {
+  return this.aggregate([
     {
-      organization: organizationId,
-      client: clientId,
-      category: correctCategory,
-    },
-    {
-      $inc: { usageCount: 1, confidence: 10 },
-      $set: { 
-        userConfirmed: true,
-        lastUsed: new Date(),
+      $match: {
+        organization: mongoose.Types.ObjectId(organizationId),
+        isActive: true,
       },
     },
-    { upsert: true, new: true }
-  );
-  
-  return correctMapping;
+    {
+      $group: {
+        _id: '$category',
+        totalUsage: { $sum: '$usageCount' },
+        uniqueVendors: { $addToSet: '$vendorName' },
+        avgGstRate: { $avg: '$gstRate' },
+        lastUsed: { $max: '$lastUsed' },
+      },
+    },
+    {
+      $sort: { totalUsage: -1 },
+    },
+    {
+      $limit: limit,
+    },
+    {
+      $project: {
+        category: '$_id',
+        totalUsage: 1,
+        vendorCount: { $size: '$uniqueVendors' },
+        avgGstRate: { $round: ['$avgGstRate', 0] },
+        lastUsed: 1,
+      },
+    },
+  ]);
 };
+
+categoryMappingSchema.pre('save', function (next) {
+  if (this.isModified('usageCount') || this.isModified('lastUsed')) {
+    this.calculateConfidence();
+  }
+  next();
+});
 
 export default mongoose.model('CategoryMapping', categoryMappingSchema);
