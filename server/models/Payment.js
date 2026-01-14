@@ -1,5 +1,6 @@
 // ============================================
 // FILE: server/models/Payment.js
+// Payment Model WITH RAZORPAY FIELDS
 // ============================================
 
 import mongoose from 'mongoose';
@@ -35,6 +36,20 @@ const paymentSchema = new mongoose.Schema({
   referenceNumber: String,
   bankName: String,
   notes: String,
+  
+  // ✅ NEW: Razorpay Fields
+  razorpayOrderId: {
+    type: String,
+    sparse: true, // Allows null values with unique index
+  },
+  razorpayPaymentId: {
+    type: String,
+    sparse: true,
+  },
+  razorpaySignature: {
+    type: String,
+  },
+  
   organization: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
@@ -44,7 +59,10 @@ const paymentSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+// Indexes
 paymentSchema.index({ invoice: 1 });
 paymentSchema.index({ client: 1 });
+paymentSchema.index({ razorpayPaymentId: 1 }, { unique: true, sparse: true });
+paymentSchema.index({ organization: 1, paymentNumber: 1 }, { unique: true });
 
 export default mongoose.model('Payment', paymentSchema);

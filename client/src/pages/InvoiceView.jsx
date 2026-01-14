@@ -9,6 +9,8 @@ import Layout from "../components/Layout";
 import InvoiceTemplateSettings, {
   THEME_COLORS,
 } from "../components/InvoiceTemplateSettings";
+import RazorpayPaymentButton from "../components/RazorpayPaymentButton";
+
 import api from "../utils/api";
 import { useAuthStore } from "../store/authStore";
 import QRCode from "qrcode";
@@ -234,72 +236,76 @@ export default function InvoiceView() {
     }
   };
 
-const handleDownloadPDF = async () => {
-  try {
-    console.log("🔵 Starting PDF download...");
-    
-    const response = await api.get(`/api/invoices/${id}/pdf`, {
-      responseType: "blob",
-    });
+  const handleDownloadPDF = async () => {
+    try {
+      console.log("🔵 Starting PDF download...");
 
-    // ✅ DEBUG: Log all headers
-    console.log("📋 All response headers:", response.headers);
-    console.log("📋 Content-Disposition header:", response.headers["content-disposition"]);
+      const response = await api.get(`/api/invoices/${id}/pdf`, {
+        responseType: "blob",
+      });
 
-    // ✅ Extract filename from Content-Disposition header
-    const contentDisposition = response.headers["content-disposition"];
-    let filename = `Muskdeer_${invoice.invoiceNumber} -- Pending.pdf`; // Fallback with proper format
-    
-    if (contentDisposition) {
-      console.log("✅ Content-Disposition found:", contentDisposition);
-      
-      // Try different regex patterns
-      let match = contentDisposition.match(/filename="([^"]+)"/);
-      if (!match) {
-        match = contentDisposition.match(/filename=([^;,\s]+)/);
-      }
-      
-      if (match && match[1]) {
-        filename = match[1];
-        console.log("✅ Extracted filename from header:", filename);
+      // ✅ DEBUG: Log all headers
+      console.log("📋 All response headers:", response.headers);
+      console.log(
+        "📋 Content-Disposition header:",
+        response.headers["content-disposition"]
+      );
+
+      // ✅ Extract filename from Content-Disposition header
+      const contentDisposition = response.headers["content-disposition"];
+      let filename = `Muskdeer_${invoice.invoiceNumber} -- Pending.pdf`; // Fallback with proper format
+
+      if (contentDisposition) {
+        console.log("✅ Content-Disposition found:", contentDisposition);
+
+        // Try different regex patterns
+        let match = contentDisposition.match(/filename="([^"]+)"/);
+        if (!match) {
+          match = contentDisposition.match(/filename=([^;,\s]+)/);
+        }
+
+        if (match && match[1]) {
+          filename = match[1];
+          console.log("✅ Extracted filename from header:", filename);
+        } else {
+          console.warn(
+            "⚠️ Could not extract filename from header, using fallback"
+          );
+        }
       } else {
-        console.warn("⚠️ Could not extract filename from header, using fallback");
+        console.warn("⚠️ No Content-Disposition header found!");
       }
-    } else {
-      console.warn("⚠️ No Content-Disposition header found!");
+
+      console.log("📥 Final filename:", filename);
+
+      // ✅ Create blob with correct MIME type
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      console.log("📦 Blob created:", blob.type, blob.size, "bytes");
+
+      // ✅ Create temporary download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+
+      console.log("🔗 Download link created");
+
+      // ✅ Append, click, and cleanup
+      document.body.appendChild(link);
+      link.click();
+      console.log("✅ Download triggered");
+
+      // ✅ Proper cleanup
+      setTimeout(() => {
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        console.log("🧹 Cleanup completed");
+      }, 100);
+    } catch (error) {
+      console.error("❌ Error downloading PDF:", error);
+      alert("Failed to generate PDF");
     }
-
-    console.log("📥 Final filename:", filename);
-
-    // ✅ Create blob with correct MIME type
-    const blob = new Blob([response.data], { type: "application/pdf" });
-    console.log("📦 Blob created:", blob.type, blob.size, "bytes");
-    
-    // ✅ Create temporary download link
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    
-    console.log("🔗 Download link created");
-    
-    // ✅ Append, click, and cleanup
-    document.body.appendChild(link);
-    link.click();
-    console.log("✅ Download triggered");
-    
-    // ✅ Proper cleanup
-    setTimeout(() => {
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      console.log("🧹 Cleanup completed");
-    }, 100);
-
-  } catch (error) {
-    console.error("❌ Error downloading PDF:", error);
-    alert("Failed to generate PDF");
-  }
-};
+  };
 
   const handlePrint = () => {
     window.print();
@@ -386,56 +392,58 @@ const handleDownloadPDF = async () => {
     }
   };
 
-const handleDownloadWithAttachments = async (invoiceId) => {
-  try {
-    console.log("🔵 Starting ZIP download...");
-    
-    const response = await api.get(
-      `/api/invoices/${invoiceId}/download-with-attachments`,
-      { responseType: "blob" }
-    );
+  const handleDownloadWithAttachments = async (invoiceId) => {
+    try {
+      console.log("🔵 Starting ZIP download...");
 
-    console.log("📋 ZIP Content-Disposition:", response.headers["content-disposition"]);
+      const response = await api.get(
+        `/api/invoices/${invoiceId}/download-with-attachments`,
+        { responseType: "blob" }
+      );
 
-    // ✅ Extract filename from Content-Disposition header
-    const contentDisposition = response.headers["content-disposition"];
-    let filename = `${invoice.invoiceNumber}_Complete.zip`; // Fallback
-    
-    if (contentDisposition) {
-      let match = contentDisposition.match(/filename="([^"]+)"/);
-      if (!match) {
-        match = contentDisposition.match(/filename=([^;,\s]+)/);
+      console.log(
+        "📋 ZIP Content-Disposition:",
+        response.headers["content-disposition"]
+      );
+
+      // ✅ Extract filename from Content-Disposition header
+      const contentDisposition = response.headers["content-disposition"];
+      let filename = `${invoice.invoiceNumber}_Complete.zip`; // Fallback
+
+      if (contentDisposition) {
+        let match = contentDisposition.match(/filename="([^"]+)"/);
+        if (!match) {
+          match = contentDisposition.match(/filename=([^;,\s]+)/);
+        }
+
+        if (match && match[1]) {
+          filename = match[1];
+          console.log("✅ ZIP filename extracted:", filename);
+        }
       }
-      
-      if (match && match[1]) {
-        filename = match[1];
-        console.log("✅ ZIP filename extracted:", filename);
-      }
+
+      console.log("📦 Final ZIP filename:", filename);
+
+      const blob = new Blob([response.data], { type: "application/zip" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+
+      document.body.appendChild(link);
+      link.click();
+      console.log("✅ ZIP download triggered");
+
+      setTimeout(() => {
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        console.log("🧹 ZIP cleanup completed");
+      }, 100);
+    } catch (error) {
+      console.error("❌ ZIP download error:", error);
+      alert("Failed to download files");
     }
-
-    console.log("📦 Final ZIP filename:", filename);
-
-    const blob = new Blob([response.data], { type: "application/zip" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    
-    document.body.appendChild(link);
-    link.click();
-    console.log("✅ ZIP download triggered");
-    
-    setTimeout(() => {
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      console.log("🧹 ZIP cleanup completed");
-    }, 100);
-
-  } catch (error) {
-    console.error("❌ ZIP download error:", error);
-    alert("Failed to download files");
-  }
-};
+  };
 
   // ✅ FEATURE #36: Delete Attachment
   const handleDeleteAttachment = async (attachmentId) => {
@@ -558,6 +566,14 @@ const handleDownloadWithAttachments = async (invoiceId) => {
                   {invoice.status !== "PAID" &&
                     invoice.status !== "CANCELLED" && (
                       <>
+                        {/* ✅ NEW: Razorpay Online Payment Button */}
+                        <RazorpayPaymentButton
+                          invoice={invoice}
+                          onSuccess={() => {
+                            fetchInvoiceDetails(); // Refresh invoice after payment
+                          }}
+                        />
+
                         <button
                           onClick={() => setShowPaymentModal(true)}
                           className="flex flex-col items-center gap-2 bg-gradient-to-br from-green-500 to-green-600 text-white px-4 py-3 rounded-lg hover:from-green-600 hover:to-green-700 transition-all hover:shadow-lg text-sm font-medium"

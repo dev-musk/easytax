@@ -445,74 +445,10 @@ export default function Layout({ children }) {
                 )}
               </button>
 
-              {/* Color Theme Selector */}
-              {/* <div className="relative" ref={colorRef}>
-                <button
-                  onClick={() => setColorDropdownOpen(!colorDropdownOpen)}
-                  className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  title="Change Color Theme"
-                >
-                  <Palette className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                </button>
-
-                {colorDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
-                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                      Color Theme
-                    </div>
-                    {['blue', 'purple', 'green', 'orange'].map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => handleColorChange(color)}
-                        className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                          colorTheme === color ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-${color}-600`}></div>
-                        <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">{color}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div> */}
-
-              {/* Language Selector */}
-              {/* <div className="relative" ref={languageRef}>
-                <button
-                  onClick={() => setLanguageDropdownOpen(!languageDropdownOpen)}
-                  className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  title="Change Language"
-                >
-                  <Globe className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                </button>
-
-                {languageDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
-                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                      Language
-                    </div>
-                    {[
-                      { code: 'en', name: 'English', flag: '🇬🇧' },
-                      { code: 'hi', name: 'हिन्दी', flag: '🇮🇳' },
-                      { code: 'ta', name: 'தமிழ்', flag: '🇮🇳' }
-                    ].map((lang) => (
-                      <button
-                        key={lang.code}
-                        onClick={() => handleLanguageChange(lang.code)}
-                        className={`w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                          language === lang.code ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-                        }`}
-                      >
-                        <span className="text-xl">{lang.flag}</span>
-                        <span className="text-sm text-gray-700 dark:text-gray-300">{lang.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div> */}
+             
 
               {/* Notifications */}
-              {/* <div className="relative" ref={notificationsRef}>
+              <div className="relative" ref={notificationsRef}>
                 <button
                   onClick={() => setNotificationsOpen(!notificationsOpen)}
                   className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative"
@@ -539,7 +475,7 @@ export default function Layout({ children }) {
                     </div>
                   </div>
                 )}
-              </div> */}
+              </div>
 
               {/* Profile Dropdown */}
               <div className="relative" ref={profileRef}>
