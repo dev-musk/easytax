@@ -14,7 +14,7 @@ import GRN from "../models/GRN.js";
 import mongoose from "mongoose";
 import { calculateGSTBreakdown } from "../utils/gstCalculator.js";
 import { amountToWords } from "../utils/numberToWords.js";
-import { extractTextFromImage } from "../utils/extractTextFromImage.js"
+import { extractTextFromImage } from "../utils/extractTextFromImage.js";
 import crypto from "crypto";
 import uploadInvoiceAttachments from "../config/invoiceAttachmentsMulter.js";
 import {
@@ -1228,29 +1228,50 @@ router.get("/:id/pdf", async (req, res) => {
     const { generateInvoicePDF } = await import("../utils/pdfGenerator.js");
     const html = generateInvoicePDF(invoice, organization);
 
-     
-  // ✅ FIX #9: Better filename format
-  const sanitizedCompanyName = organization.name
-    .replace(/[^a-zA-Z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '');
-  
-  const sanitizedInvoiceNumber = invoice.invoiceNumber
-    .replace(/\//g, '-');
-  
-  const filename = `${sanitizedCompanyName}_${sanitizedInvoiceNumber}.pdf`;
-  
-  res.setHeader('Content-Type', 'text/html');
-  res.setHeader(
-    'Content-Disposition',
-    `inline; filename="${filename}"`
-  );
+    // ✅ Generate filename
+    const sanitizedCompanyName = organization.name
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+
+    const sanitizedInvoiceNumber = invoice.invoiceNumber.replace(/\//g, "-");
+
+    const formatStatus = (status) => {
+      return status
+        .split("_")
+        .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+        .join(" ");
+    };
+
+    const filename = `${sanitizedCompanyName}_${sanitizedInvoiceNumber} -- ${formatStatus(
+      invoice.status
+    )}.pdf`;
+
+    console.log(`📄 PDF Route - Generated filename: ${filename}`);
+
+    // ✅ CRITICAL: Set proper headers - Make sure filename is properly encoded
+    res.setHeader("Content-Type", "application/pdf");
+    
+    // ✅ Use proper RFC 6266 format for Content-Disposition
+    res.setHeader(
+      "Content-Disposition", 
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    
+    console.log(`✅ Headers set for: ${filename}`);
+    
+    // ✅ Send HTML content (will be converted to PDF by browser)
     res.send(html);
   } catch (error) {
     console.error("PDF generation error:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
 // Send invoice via email
 router.post("/:id/send-email", async (req, res) => {
   try {
@@ -1411,14 +1432,43 @@ router.get("/:id/download-with-attachments", async (req, res) => {
       return res.status(404).json({ error: "Invoice not found" });
     }
 
+    const organization = await Organization.findById(organizationId);
+
     // Create ZIP
     const archive = archiver("zip", { zlib: { level: 9 } });
 
-    res.attachment(`Invoice_${invoice.invoiceNumber}_Complete.zip`);
+    // ✅ Generate proper ZIP filename
+    const sanitizedCompanyName = organization.name
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+
+    const sanitizedInvoiceNumber = invoice.invoiceNumber.replace(/\//g, "-");
+
+    const formatStatus = (status) => {
+      return status
+        .split("_")
+        .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+        .join(" ");
+    };
+
+    const zipFilename = `${sanitizedCompanyName}_${sanitizedInvoiceNumber} -- ${formatStatus(
+      invoice.status
+    )}_Complete.zip`;
+
+    console.log(`📦 ZIP Route - Generated filename: ${zipFilename}`);
+
+    // ✅ Set proper headers with RFC 6266 compliance
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${zipFilename}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}`
+    );
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
     archive.pipe(res);
 
     // Add PDF
-    const organization = await Organization.findById(organizationId);
     const { generateInvoicePDF } = await import("../utils/pdfGenerator.js");
     const html = generateInvoicePDF(invoice, organization);
     archive.append(html, { name: `${invoice.invoiceNumber}.html` });
@@ -1433,6 +1483,7 @@ router.get("/:id/download-with-attachments", async (req, res) => {
     }
 
     await archive.finalize();
+    console.log(`✅ ZIP archive finalized: ${zipFilename}`);
   } catch (error) {
     console.error("ZIP creation error:", error);
     res.status(500).json({ error: error.message });

@@ -1,19 +1,20 @@
 // ============================================
-// FILE: client/src/pages/Analytics.jsx
-// NEW FILE - Advanced Analytics Dashboard
+// FILE: client/src/pages/Analytics.jsx (UPDATED)
+// ✅ ENHANCED: Multi-format export (PDF, Excel, CSV)
 // ============================================
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ExportButton from '../components/ExportButton';
 import api from '../utils/api';
+import { exportReport, formatCurrency, formatDate } from '../utils/exportHelpers';
 import {
   TrendingUp,
   DollarSign,
   FileText,
   Users,
   Calendar,
-  Download,
   BarChart3,
   PieChart,
 } from 'lucide-react';
@@ -52,32 +53,90 @@ export default function Analytics() {
     }
   };
 
-  const handleExport = async (reportType) => {
-    try {
-      const response = await api.get('/api/analytics/export', {
-        params: { reportType, ...dateRange },
-      });
+  // ============================================
+  // ✅ NEW: Multi-format export handler
+  // ============================================
+  const handleExport = (format, exportType) => {
+    let data = [];
+    let filename = '';
+    let options = {};
 
-      // Convert to CSV
-      if (response.data && response.data.length > 0) {
-        const headers = Object.keys(response.data[0]);
-        const csvContent = [
-          headers.join(','),
-          ...response.data.map((row) => headers.map((h) => row[h]).join(',')),
-        ].join('\n');
+    switch (exportType) {
+      case 'revenue-summary':
+        data = [{
+          'Period': `${dateRange.startDate} to ${dateRange.endDate}`,
+          'Total Revenue': formatCurrency(revenue?.summary?.totalRevenue || 0),
+          'Total Paid': formatCurrency(revenue?.summary?.totalPaid || 0),
+          'Total Outstanding': formatCurrency(revenue?.summary?.totalOutstanding || 0),
+          'Total Invoices': revenue?.summary?.totalInvoices || 0,
+          'Avg Invoice Value': formatCurrency(revenue?.summary?.avgInvoiceValue || 0),
+          'Total GST': formatCurrency(revenue?.summary?.totalGST || 0),
+          'Total TDS': formatCurrency(revenue?.summary?.totalTDS || 0),
+          'Total Discount': formatCurrency(revenue?.summary?.totalDiscount || 0),
+        }];
+        filename = 'revenue_summary';
+        options = {
+          title: 'Revenue Summary Report',
+          orientation: 'portrait',
+        };
+        break;
 
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${reportType}-${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-        window.URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      console.error('Error exporting:', error);
-      alert('Failed to export data');
+      case 'top-clients':
+        data = topClients.map((client, idx) => ({
+          'Rank': idx + 1,
+          'Client Name': client.client?.companyName || 'N/A',
+          'Total Revenue': formatCurrency(client.totalRevenue),
+          'Total Invoices': client.totalInvoices,
+          'Avg Invoice Value': formatCurrency(client.totalRevenue / client.totalInvoices),
+        }));
+        filename = 'top_clients';
+        options = {
+          title: 'Top 10 Clients Report',
+          orientation: 'portrait',
+        };
+        break;
+
+      case 'products':
+        data = productPerformance.map((product) => ({
+          'Item': product._id.description,
+          'Type': product._id.itemType,
+          'Total Revenue': formatCurrency(product.totalRevenue),
+          'Quantity Sold': product.totalQuantity,
+          'Times Ordered': product.timesOrdered,
+          'Avg Rate': formatCurrency(product.totalRevenue / product.totalQuantity),
+        }));
+        filename = 'product_performance';
+        options = {
+          title: 'Product Performance Report',
+          orientation: 'landscape',
+        };
+        break;
+
+      case 'monthly-trend':
+        data = revenue?.monthlyTrend?.map((month) => ({
+          'Month': `${month._id.month}/${month._id.year}`,
+          'Revenue': formatCurrency(month.revenue),
+          'Invoices': month.invoices,
+          'Avg Invoice': formatCurrency(month.revenue / month.invoices),
+        })) || [];
+        filename = 'monthly_trend';
+        options = {
+          title: 'Monthly Revenue Trend',
+          orientation: 'portrait',
+        };
+        break;
+
+      default:
+        alert('Unknown export type');
+        return;
     }
+
+    if (data.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    exportReport(data, format, filename, options);
   };
 
   if (loading) {
@@ -242,10 +301,16 @@ export default function Analytics() {
           </div>
         )}
 
-        {/* Monthly Trend */}
+        {/* Monthly Trend with Export */}
         {revenue?.monthlyTrend && revenue.monthlyTrend.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Monthly Revenue Trend</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Monthly Revenue Trend</h2>
+              <ExportButton
+                onExport={(format) => handleExport(format, 'monthly-trend')}
+                size="sm"
+              />
+            </div>
             <div className="space-y-3">
               {revenue.monthlyTrend.map((month) => {
                 const monthName = new Date(month._id.year, month._id.month - 1).toLocaleString(
@@ -277,12 +342,18 @@ export default function Analytics() {
           </div>
         )}
 
-        {/* Top Clients */}
+        {/* Top Clients with Export */}
         {topClients.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Top 10 Clients</h2>
-              <Users className="w-5 h-5 text-gray-400" />
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-gray-400" />
+                Top 10 Clients
+              </h2>
+              <ExportButton
+                onExport={(format) => handleExport(format, 'top-clients')}
+                size="sm"
+              />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -323,12 +394,18 @@ export default function Analytics() {
           </div>
         )}
 
-        {/* Product Performance */}
+        {/* Product Performance with Export */}
         {productPerformance.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Top Products/Services</h2>
-              <PieChart className="w-5 h-5 text-gray-400" />
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-gray-400" />
+                Top Products/Services
+              </h2>
+              <ExportButton
+                onExport={(format) => handleExport(format, 'products')}
+                size="sm"
+              />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -385,38 +462,16 @@ export default function Analytics() {
           </div>
         )}
 
-        {/* Export Options */}
+        {/* Export Summary Section */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Export Data</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <button
-              onClick={() => handleExport('invoices')}
-              className="flex items-center justify-center gap-2 bg-blue-50 text-blue-700 px-4 py-3 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm font-medium">Invoices</span>
-            </button>
-            <button
-              onClick={() => handleExport('clients')}
-              className="flex items-center justify-center gap-2 bg-green-50 text-green-700 px-4 py-3 rounded-lg hover:bg-green-100 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm font-medium">Clients</span>
-            </button>
-            <button
-              onClick={() => handleExport('profitability')}
-              className="flex items-center justify-center gap-2 bg-purple-50 text-purple-700 px-4 py-3 rounded-lg hover:bg-purple-100 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm font-medium">Profitability</span>
-            </button>
-            <button
-              onClick={() => handleExport('products')}
-              className="flex items-center justify-center gap-2 bg-orange-50 text-orange-700 px-4 py-3 rounded-lg hover:bg-orange-100 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              <span className="text-sm font-medium">Products</span>
-            </button>
+         
+          <div className="flex justify-between gap-3">
+             <h2 className="text-lg font-semibold text-gray-900 mb-4">Export Complete Report</h2>
+            <ExportButton
+              onExport={(format) => handleExport(format, 'revenue-summary')}
+              size="sm"
+              className="w-full justify-center"
+            />
           </div>
         </div>
       </div>

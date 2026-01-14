@@ -3,10 +3,10 @@
 // ADAPTED - Uses authStore (no changes needed as it doesn't use auth)
 // ============================================
 
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Layout from '../components/Layout';
-import api from '../utils/api';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import Layout from "../components/Layout";
+import api from "../utils/api";
 import {
   Download,
   Search,
@@ -17,16 +17,22 @@ import {
   Clock,
   DollarSign,
   AlertCircle,
-} from 'lucide-react';
+} from "lucide-react";
+import ExportButton from "../components/ExportButton";
+import {
+  exportReport,
+  formatCurrency,
+  formatDate,
+} from "../utils/exportHelpers";
 
 export default function OutstandingReports() {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClient, setSelectedClient] = useState('ALL');
-  const [sortBy, setSortBy] = useState('dueDate');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedClient, setSelectedClient] = useState("ALL");
+  const [sortBy, setSortBy] = useState("dueDate");
 
   useEffect(() => {
     fetchData();
@@ -35,22 +41,22 @@ export default function OutstandingReports() {
   const fetchData = async () => {
     try {
       const [invoicesRes, clientsRes] = await Promise.all([
-        api.get('/api/invoices'),
-        api.get('/api/clients'),
+        api.get("/api/invoices"),
+        api.get("/api/clients"),
       ]);
 
       // Filter only unpaid or partially paid invoices
       const unpaidInvoices = invoicesRes.data.filter(
         (inv) =>
-          inv.status === 'PENDING' ||
-          inv.status === 'PARTIALLY_PAID' ||
-          inv.status === 'OVERDUE'
+          inv.status === "PENDING" ||
+          inv.status === "PARTIALLY_PAID" ||
+          inv.status === "OVERDUE"
       );
 
       setInvoices(unpaidInvoices);
       setClients(clientsRes.data || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
@@ -58,33 +64,43 @@ export default function OutstandingReports() {
 
   // Calculate summary statistics
   const summary = {
-    totalOutstanding: invoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0),
+    totalOutstanding: invoices.reduce(
+      (sum, inv) => sum + (inv.balanceAmount || 0),
+      0
+    ),
     totalInvoices: invoices.length,
     overdueAmount: invoices
       .filter((inv) => new Date(inv.dueDate) < new Date())
       .reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0),
-    overdueCount: invoices.filter((inv) => new Date(inv.dueDate) < new Date()).length,
+    overdueCount: invoices.filter((inv) => new Date(inv.dueDate) < new Date())
+      .length,
   };
 
   // Filter and sort invoices
   const filteredInvoices = invoices
     .filter((invoice) => {
       const matchesSearch =
-        invoice.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.client?.companyName?.toLowerCase().includes(searchTerm.toLowerCase());
+        invoice.invoiceNumber
+          ?.toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        invoice.client?.companyName
+          ?.toLowerCase()
+          .includes(searchTerm.toLowerCase());
 
       const matchesClient =
-        selectedClient === 'ALL' || invoice.client?._id === selectedClient;
+        selectedClient === "ALL" || invoice.client?._id === selectedClient;
 
       return matchesSearch && matchesClient;
     })
     .sort((a, b) => {
-      if (sortBy === 'dueDate') {
+      if (sortBy === "dueDate") {
         return new Date(a.dueDate) - new Date(b.dueDate);
-      } else if (sortBy === 'amount') {
+      } else if (sortBy === "amount") {
         return b.balanceAmount - a.balanceAmount;
-      } else if (sortBy === 'client') {
-        return (a.client?.companyName || '').localeCompare(b.client?.companyName || '');
+      } else if (sortBy === "client") {
+        return (a.client?.companyName || "").localeCompare(
+          b.client?.companyName || ""
+        );
       }
       return 0;
     });
@@ -108,42 +124,44 @@ export default function OutstandingReports() {
     .filter((item) => item.count > 0)
     .sort((a, b) => b.outstanding - a.outstanding);
 
-  const handleExportToExcel = () => {
-    // Prepare data for export
-    const exportData = filteredInvoices.map((inv) => ({
-      'Invoice Number': inv.invoiceNumber,
-      'Client Name': inv.client?.companyName || '',
-      'Invoice Date': new Date(inv.invoiceDate).toLocaleDateString('en-IN'),
-      'Due Date': new Date(inv.dueDate).toLocaleDateString('en-IN'),
-      'Total Amount': inv.totalAmount,
-      'Paid Amount': inv.paidAmount,
-      'Balance Amount': inv.balanceAmount,
+  const handleExport = (format) => {
+    const data = filteredInvoices.map((inv) => ({
+      "Invoice Number": inv.invoiceNumber,
+      "Client Name": inv.client?.companyName || "N/A",
+      "Invoice Date": formatDate(inv.invoiceDate),
+      "Due Date": formatDate(inv.dueDate),
+      "Total Amount": formatCurrency(inv.totalAmount),
+      "Paid Amount": formatCurrency(inv.paidAmount),
+      "Balance Amount": formatCurrency(inv.balanceAmount),
       Status: inv.status,
-      'Days Overdue': Math.max(
+      "Days Overdue": Math.max(
         0,
         Math.floor((new Date() - new Date(inv.dueDate)) / (1000 * 60 * 60 * 24))
       ),
     }));
 
-    // Convert to CSV
-    const headers = Object.keys(exportData[0] || {});
-    const csvContent = [
-      headers.join(','),
-      ...exportData.map((row) => headers.map((header) => row[header]).join(',')),
-    ].join('\n');
-
-    // Download
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `outstanding-report-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
+    exportReport(data, format, "outstanding_report", {
+      title: "Outstanding Invoices Report",
+      orientation: "landscape",
+      summary: [
+        {
+          label: "Total Outstanding",
+          value: formatCurrency(summary.totalOutstanding),
+        },
+        { label: "Total Invoices", value: summary.totalInvoices },
+        {
+          label: "Overdue Amount",
+          value: formatCurrency(summary.overdueAmount),
+        },
+        { label: "Overdue Count", value: summary.overdueCount },
+      ],
+    });
   };
 
   const getDaysOverdue = (dueDate) => {
-    const days = Math.floor((new Date() - new Date(dueDate)) / (1000 * 60 * 60 * 24));
+    const days = Math.floor(
+      (new Date() - new Date(dueDate)) / (1000 * 60 * 60 * 24)
+    );
     return days > 0 ? days : 0;
   };
 
@@ -163,18 +181,14 @@ export default function OutstandingReports() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Outstanding Reports</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Outstanding Reports
+            </h1>
             <p className="text-gray-600 text-sm mt-1">
               Track pending and overdue invoice payments
             </p>
           </div>
-          <button
-            onClick={handleExportToExcel}
-            className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            <Download className="w-5 h-5" />
-            Export to Excel
-          </button>
+          <ExportButton onExport={handleExport} />
         </div>
 
         {/* Summary Cards */}
@@ -185,7 +199,7 @@ export default function OutstandingReports() {
               <DollarSign className="w-5 h-5 text-blue-600" />
             </div>
             <p className="text-2xl font-bold text-gray-900">
-              ₹{summary.totalOutstanding.toLocaleString('en-IN')}
+              ₹{summary.totalOutstanding.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-gray-500 mt-1">
               {summary.totalInvoices} pending invoices
@@ -198,9 +212,11 @@ export default function OutstandingReports() {
               <AlertCircle className="w-5 h-5 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-red-600">
-              ₹{summary.overdueAmount.toLocaleString('en-IN')}
+              ₹{summary.overdueAmount.toLocaleString("en-IN")}
             </p>
-            <p className="text-xs text-gray-500 mt-1">{summary.overdueCount} overdue invoices</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {summary.overdueCount} overdue invoices
+            </p>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -213,10 +229,12 @@ export default function OutstandingReports() {
                 ? Math.round(
                     invoices
                       .filter((inv) => new Date(inv.dueDate) < new Date())
-                      .reduce((sum, inv) => sum + getDaysOverdue(inv.dueDate), 0) /
-                      summary.overdueCount
+                      .reduce(
+                        (sum, inv) => sum + getDaysOverdue(inv.dueDate),
+                        0
+                      ) / summary.overdueCount
                   )
-                : 0}{' '}
+                : 0}{" "}
               days
             </p>
             <p className="text-xs text-gray-500 mt-1">For overdue invoices</p>
@@ -230,14 +248,22 @@ export default function OutstandingReports() {
             <p className="text-2xl font-bold text-gray-900">
               {invoices.length > 0
                 ? Math.round(
-                    (invoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0) /
-                      invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0)) *
+                    (invoices.reduce(
+                      (sum, inv) => sum + (inv.paidAmount || 0),
+                      0
+                    ) /
+                      invoices.reduce(
+                        (sum, inv) => sum + (inv.totalAmount || 0),
+                        0
+                      )) *
                       100
                   )
                 : 0}
               %
             </p>
-            <p className="text-xs text-gray-500 mt-1">Payment collection rate</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Payment collection rate
+            </p>
           </div>
         </div>
 
@@ -294,20 +320,26 @@ export default function OutstandingReports() {
               Client-wise Outstanding Summary
             </h2>
             <div className="space-y-3">
-              {clientWiseSummary.slice(0, 5).map(({ client, count, outstanding }) => (
-                <div
-                  key={client._id}
-                  className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{client.companyName}</p>
-                    <p className="text-xs text-gray-500">{count} pending invoices</p>
+              {clientWiseSummary
+                .slice(0, 5)
+                .map(({ client, count, outstanding }) => (
+                  <div
+                    key={client._id}
+                    className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">
+                        {client.companyName}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {count} pending invoices
+                      </p>
+                    </div>
+                    <p className="text-lg font-bold text-red-600">
+                      ₹{outstanding.toLocaleString("en-IN")}
+                    </p>
                   </div>
-                  <p className="text-lg font-bold text-red-600">
-                    ₹{outstanding.toLocaleString('en-IN')}
-                  </p>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         )}
@@ -323,9 +355,9 @@ export default function OutstandingReports() {
                 No outstanding invoices
               </h3>
               <p className="text-gray-500">
-                {searchTerm || selectedClient !== 'ALL'
-                  ? 'Try adjusting your filters'
-                  : 'All invoices are paid!'}
+                {searchTerm || selectedClient !== "ALL"
+                  ? "Try adjusting your filters"
+                  : "All invoices are paid!"}
               </p>
             </div>
           </div>
@@ -369,38 +401,44 @@ export default function OutstandingReports() {
                     return (
                       <tr key={invoice._id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
-                          <p className="font-medium text-gray-900">{invoice.invoiceNumber}</p>
+                          <p className="font-medium text-gray-900">
+                            {invoice.invoiceNumber}
+                          </p>
                           <p className="text-xs text-gray-500">
-                            {new Date(invoice.invoiceDate).toLocaleDateString('en-IN')}
+                            {new Date(invoice.invoiceDate).toLocaleDateString(
+                              "en-IN"
+                            )}
                           </p>
                         </td>
                         <td className="py-3 px-4">
                           <p className="text-sm text-gray-900">
-                            {invoice.client?.companyName || 'Unknown'}
+                            {invoice.client?.companyName || "Unknown"}
                           </p>
                         </td>
                         <td className="py-3 px-4">
                           <p
                             className={`text-sm font-medium ${
-                              isOverdue ? 'text-red-600' : 'text-gray-900'
+                              isOverdue ? "text-red-600" : "text-gray-900"
                             }`}
                           >
-                            {new Date(invoice.dueDate).toLocaleDateString('en-IN')}
+                            {new Date(invoice.dueDate).toLocaleDateString(
+                              "en-IN"
+                            )}
                           </p>
                         </td>
                         <td className="py-3 px-4 text-right">
                           <p className="text-sm font-medium text-gray-900">
-                            ₹{invoice.totalAmount?.toLocaleString('en-IN')}
+                            ₹{invoice.totalAmount?.toLocaleString("en-IN")}
                           </p>
                         </td>
                         <td className="py-3 px-4 text-right">
                           <p className="text-sm text-green-600">
-                            ₹{invoice.paidAmount?.toLocaleString('en-IN')}
+                            ₹{invoice.paidAmount?.toLocaleString("en-IN")}
                           </p>
                         </td>
                         <td className="py-3 px-4 text-right">
                           <p className="text-sm font-bold text-red-600">
-                            ₹{invoice.balanceAmount?.toLocaleString('en-IN')}
+                            ₹{invoice.balanceAmount?.toLocaleString("en-IN")}
                           </p>
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -414,7 +452,9 @@ export default function OutstandingReports() {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <button
-                            onClick={() => navigate(`/invoices/view/${invoice._id}`)}
+                            onClick={() =>
+                              navigate(`/invoices/view/${invoice._id}`)
+                            }
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="View invoice"
                           >

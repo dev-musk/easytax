@@ -3,10 +3,10 @@
 // NEW FILE - Invoice Ageing Analysis Report
 // ============================================
 
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Layout from '../components/Layout';
-import api from '../utils/api';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import Layout from "../components/Layout";
+import api from "../utils/api";
 import {
   Download,
   Search,
@@ -17,16 +17,22 @@ import {
   AlertTriangle,
   TrendingUp,
   Users,
-} from 'lucide-react';
+} from "lucide-react";
+import ExportButton from "../components/ExportButton";
+import {
+  exportReport,
+  formatCurrency,
+  formatDate,
+} from "../utils/exportHelpers";
 
 export default function AgeingReport() {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClient, setSelectedClient] = useState('ALL');
-  const [viewMode, setViewMode] = useState('summary'); // 'summary' or 'detailed'
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedClient, setSelectedClient] = useState("ALL");
+  const [viewMode, setViewMode] = useState("summary"); // 'summary' or 'detailed'
 
   useEffect(() => {
     fetchData();
@@ -35,54 +41,56 @@ export default function AgeingReport() {
   const fetchData = async () => {
     try {
       const [invoicesRes, clientsRes] = await Promise.all([
-        api.get('/api/invoices'),
-        api.get('/api/clients'),
+        api.get("/api/invoices"),
+        api.get("/api/clients"),
       ]);
 
       // Filter only unpaid or partially paid invoices
       const unpaidInvoices = invoicesRes.data.filter(
         (inv) =>
-          inv.status === 'PENDING' ||
-          inv.status === 'PARTIALLY_PAID' ||
-          inv.status === 'OVERDUE'
+          inv.status === "PENDING" ||
+          inv.status === "PARTIALLY_PAID" ||
+          inv.status === "OVERDUE"
       );
 
       setInvoices(unpaidInvoices);
       setClients(clientsRes.data || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const getDaysOverdue = (dueDate) => {
-    const days = Math.floor((new Date() - new Date(dueDate)) / (1000 * 60 * 60 * 24));
+    const days = Math.floor(
+      (new Date() - new Date(dueDate)) / (1000 * 60 * 60 * 24)
+    );
     return days;
   };
 
   const getAgeBucket = (daysOverdue) => {
-    if (daysOverdue < 0) return 'NOT_DUE';
-    if (daysOverdue <= 30) return '0-30';
-    if (daysOverdue <= 60) return '31-60';
-    if (daysOverdue <= 90) return '61-90';
-    return '90+';
+    if (daysOverdue < 0) return "NOT_DUE";
+    if (daysOverdue <= 30) return "0-30";
+    if (daysOverdue <= 60) return "31-60";
+    if (daysOverdue <= 90) return "61-90";
+    return "90+";
   };
 
   // Calculate ageing summary
   const ageingSummary = {
     notDue: { count: 0, amount: 0 },
-    '0-30': { count: 0, amount: 0 },
-    '31-60': { count: 0, amount: 0 },
-    '61-90': { count: 0, amount: 0 },
-    '90+': { count: 0, amount: 0 },
+    "0-30": { count: 0, amount: 0 },
+    "31-60": { count: 0, amount: 0 },
+    "61-90": { count: 0, amount: 0 },
+    "90+": { count: 0, amount: 0 },
   };
 
   invoices.forEach((inv) => {
     const daysOverdue = getDaysOverdue(inv.dueDate);
     const bucket = getAgeBucket(daysOverdue);
-    
-    if (bucket === 'NOT_DUE') {
+
+    if (bucket === "NOT_DUE") {
       ageingSummary.notDue.count++;
       ageingSummary.notDue.amount += inv.balanceAmount || 0;
     } else {
@@ -94,23 +102,29 @@ export default function AgeingReport() {
   // Client-wise ageing
   const clientAgeingData = clients
     .map((client) => {
-      const clientInvoices = invoices.filter((inv) => inv.client?._id === client._id);
-      
+      const clientInvoices = invoices.filter(
+        (inv) => inv.client?._id === client._id
+      );
+
       const ageing = {
         notDue: 0,
-        '0-30': 0,
-        '31-60': 0,
-        '61-90': 0,
-        '90+': 0,
+        "0-30": 0,
+        "31-60": 0,
+        "61-90": 0,
+        "90+": 0,
       };
 
       clientInvoices.forEach((inv) => {
         const daysOverdue = getDaysOverdue(inv.dueDate);
         const bucket = getAgeBucket(daysOverdue);
-        ageing[bucket === 'NOT_DUE' ? 'notDue' : bucket] += inv.balanceAmount || 0;
+        ageing[bucket === "NOT_DUE" ? "notDue" : bucket] +=
+          inv.balanceAmount || 0;
       });
 
-      const totalOutstanding = Object.values(ageing).reduce((sum, amt) => sum + amt, 0);
+      const totalOutstanding = Object.values(ageing).reduce(
+        (sum, amt) => sum + amt,
+        0
+      );
 
       return {
         client,
@@ -128,35 +142,50 @@ export default function AgeingReport() {
       ?.toLowerCase()
       .includes(searchTerm.toLowerCase());
     const matchesClient =
-      selectedClient === 'ALL' || item.client._id === selectedClient;
+      selectedClient === "ALL" || item.client._id === selectedClient;
     return matchesSearch && matchesClient;
   });
 
-  const handleExportToExcel = () => {
-    const exportData = filteredData.map((item) => ({
-      'Client Name': item.client.companyName,
-      'Total Outstanding': item.totalOutstanding,
-      'Invoice Count': item.invoiceCount,
-      'Not Due': item.ageing.notDue,
-      '0-30 Days': item.ageing['0-30'],
-      '31-60 Days': item.ageing['31-60'],
-      '61-90 Days': item.ageing['61-90'],
-      '90+ Days': item.ageing['90+'],
+  const handleExport = (format) => {
+    const data = filteredData.map((item) => ({
+      "Client Name": item.client.companyName,
+      "Total Outstanding": formatCurrency(item.totalOutstanding),
+      "Invoice Count": item.invoiceCount,
+      "Not Due": formatCurrency(item.ageing.notDue),
+      "0-30 Days": formatCurrency(item.ageing["0-30"]),
+      "31-60 Days": formatCurrency(item.ageing["31-60"]),
+      "61-90 Days": formatCurrency(item.ageing["61-90"]),
+      "90+ Days": formatCurrency(item.ageing["90+"]),
     }));
 
-    const headers = Object.keys(exportData[0] || {});
-    const csvContent = [
-      headers.join(','),
-      ...exportData.map((row) => headers.map((header) => row[header]).join(',')),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ageing-report-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
+    exportReport(data, format, "ageing_report", {
+      title: "Invoice Ageing Report",
+      orientation: "landscape",
+      summary: [
+        { label: "Total Outstanding", value: formatCurrency(totalOutstanding) },
+        { label: "Total Invoices", value: invoices.length },
+        {
+          label: "Not Due",
+          value: formatCurrency(ageingSummary.notDue.amount),
+        },
+        {
+          label: "0-30 Days",
+          value: formatCurrency(ageingSummary["0-30"].amount),
+        },
+        {
+          label: "31-60 Days",
+          value: formatCurrency(ageingSummary["31-60"].amount),
+        },
+        {
+          label: "61-90 Days",
+          value: formatCurrency(ageingSummary["61-90"].amount),
+        },
+        {
+          label: "90+ Days",
+          value: formatCurrency(ageingSummary["90+"].amount),
+        },
+      ],
+    });
   };
 
   const totalOutstanding = Object.values(ageingSummary).reduce(
@@ -186,13 +215,7 @@ export default function AgeingReport() {
             </p>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={handleExportToExcel}
-              className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Download className="w-5 h-5" />
-              Export to Excel
-            </button>
+            <ExportButton onExport={handleExport} />
           </div>
         </div>
 
@@ -204,7 +227,7 @@ export default function AgeingReport() {
               <Calendar className="w-5 h-5 text-blue-600" />
             </div>
             <p className="text-2xl font-bold text-blue-600">
-              ₹{ageingSummary.notDue.amount.toLocaleString('en-IN')}
+              ₹{ageingSummary.notDue.amount.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-gray-500 mt-1">
               {ageingSummary.notDue.count} invoices
@@ -217,10 +240,10 @@ export default function AgeingReport() {
               <TrendingUp className="w-5 h-5 text-green-600" />
             </div>
             <p className="text-2xl font-bold text-green-600">
-              ₹{ageingSummary['0-30'].amount.toLocaleString('en-IN')}
+              ₹{ageingSummary["0-30"].amount.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {ageingSummary['0-30'].count} invoices
+              {ageingSummary["0-30"].count} invoices
             </p>
           </div>
 
@@ -230,10 +253,10 @@ export default function AgeingReport() {
               <AlertTriangle className="w-5 h-5 text-yellow-600" />
             </div>
             <p className="text-2xl font-bold text-yellow-600">
-              ₹{ageingSummary['31-60'].amount.toLocaleString('en-IN')}
+              ₹{ageingSummary["31-60"].amount.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {ageingSummary['31-60'].count} invoices
+              {ageingSummary["31-60"].count} invoices
             </p>
           </div>
 
@@ -243,10 +266,10 @@ export default function AgeingReport() {
               <AlertTriangle className="w-5 h-5 text-orange-600" />
             </div>
             <p className="text-2xl font-bold text-orange-600">
-              ₹{ageingSummary['61-90'].amount.toLocaleString('en-IN')}
+              ₹{ageingSummary["61-90"].amount.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {ageingSummary['61-90'].count} invoices
+              {ageingSummary["61-90"].count} invoices
             </p>
           </div>
 
@@ -256,10 +279,10 @@ export default function AgeingReport() {
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
             <p className="text-2xl font-bold text-red-600">
-              ₹{ageingSummary['90+'].amount.toLocaleString('en-IN')}
+              ₹{ageingSummary["90+"].amount.toLocaleString("en-IN")}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {ageingSummary['90+'].count} invoices
+              {ageingSummary["90+"].count} invoices
             </p>
           </div>
         </div>
@@ -268,9 +291,11 @@ export default function AgeingReport() {
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg shadow-lg p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-blue-100 text-sm mb-1">Total Outstanding Amount</p>
+              <p className="text-blue-100 text-sm mb-1">
+                Total Outstanding Amount
+              </p>
               <p className="text-4xl font-bold">
-                ₹{totalOutstanding.toLocaleString('en-IN')}
+                ₹{totalOutstanding.toLocaleString("en-IN")}
               </p>
               <p className="text-blue-100 text-sm mt-2">
                 Across {invoices.length} outstanding invoices
@@ -317,21 +342,21 @@ export default function AgeingReport() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="flex gap-2">
             <button
-              onClick={() => setViewMode('summary')}
+              onClick={() => setViewMode("summary")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                viewMode === 'summary'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                viewMode === "summary"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               Summary View
             </button>
             <button
-              onClick={() => setViewMode('detailed')}
+              onClick={() => setViewMode("detailed")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                viewMode === 'detailed'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                viewMode === "detailed"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               Detailed View
@@ -350,13 +375,13 @@ export default function AgeingReport() {
                 No outstanding invoices
               </h3>
               <p className="text-gray-500">
-                {searchTerm || selectedClient !== 'ALL'
-                  ? 'Try adjusting your filters'
-                  : 'All invoices are paid on time!'}
+                {searchTerm || selectedClient !== "ALL"
+                  ? "Try adjusting your filters"
+                  : "All invoices are paid on time!"}
               </p>
             </div>
           </div>
-        ) : viewMode === 'summary' ? (
+        ) : viewMode === "summary" ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -398,7 +423,7 @@ export default function AgeingReport() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <p className="text-sm font-bold text-gray-900">
-                          ₹{item.totalOutstanding.toLocaleString('en-IN')}
+                          ₹{item.totalOutstanding.toLocaleString("en-IN")}
                         </p>
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -408,28 +433,28 @@ export default function AgeingReport() {
                       </td>
                       <td className="py-3 px-4 text-right text-sm text-blue-600">
                         {item.ageing.notDue > 0
-                          ? `₹${item.ageing.notDue.toLocaleString('en-IN')}`
-                          : '-'}
+                          ? `₹${item.ageing.notDue.toLocaleString("en-IN")}`
+                          : "-"}
                       </td>
                       <td className="py-3 px-4 text-right text-sm text-green-600">
-                        {item.ageing['0-30'] > 0
-                          ? `₹${item.ageing['0-30'].toLocaleString('en-IN')}`
-                          : '-'}
+                        {item.ageing["0-30"] > 0
+                          ? `₹${item.ageing["0-30"].toLocaleString("en-IN")}`
+                          : "-"}
                       </td>
                       <td className="py-3 px-4 text-right text-sm text-yellow-600">
-                        {item.ageing['31-60'] > 0
-                          ? `₹${item.ageing['31-60'].toLocaleString('en-IN')}`
-                          : '-'}
+                        {item.ageing["31-60"] > 0
+                          ? `₹${item.ageing["31-60"].toLocaleString("en-IN")}`
+                          : "-"}
                       </td>
                       <td className="py-3 px-4 text-right text-sm text-orange-600">
-                        {item.ageing['61-90'] > 0
-                          ? `₹${item.ageing['61-90'].toLocaleString('en-IN')}`
-                          : '-'}
+                        {item.ageing["61-90"] > 0
+                          ? `₹${item.ageing["61-90"].toLocaleString("en-IN")}`
+                          : "-"}
                       </td>
                       <td className="py-3 px-4 text-right text-sm text-red-600 font-medium">
-                        {item.ageing['90+'] > 0
-                          ? `₹${item.ageing['90+'].toLocaleString('en-IN')}`
-                          : '-'}
+                        {item.ageing["90+"] > 0
+                          ? `₹${item.ageing["90+"].toLocaleString("en-IN")}`
+                          : "-"}
                       </td>
                     </tr>
                   ))}
@@ -438,25 +463,25 @@ export default function AgeingReport() {
                   <tr>
                     <td className="py-3 px-4 font-bold text-gray-900">Total</td>
                     <td className="py-3 px-4 text-right font-bold text-gray-900">
-                      ₹{totalOutstanding.toLocaleString('en-IN')}
+                      ₹{totalOutstanding.toLocaleString("en-IN")}
                     </td>
                     <td className="py-3 px-4 text-center font-bold text-gray-900">
                       {invoices.length}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-blue-600">
-                      ₹{ageingSummary.notDue.amount.toLocaleString('en-IN')}
+                      ₹{ageingSummary.notDue.amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-green-600">
-                      ₹{ageingSummary['0-30'].amount.toLocaleString('en-IN')}
+                      ₹{ageingSummary["0-30"].amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-yellow-600">
-                      ₹{ageingSummary['31-60'].amount.toLocaleString('en-IN')}
+                      ₹{ageingSummary["31-60"].amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-orange-600">
-                      ₹{ageingSummary['61-90'].amount.toLocaleString('en-IN')}
+                      ₹{ageingSummary["61-90"].amount.toLocaleString("en-IN")}
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-red-600">
-                      ₹{ageingSummary['90+'].amount.toLocaleString('en-IN')}
+                      ₹{ageingSummary["90+"].amount.toLocaleString("en-IN")}
                     </td>
                   </tr>
                 </tfoot>
@@ -477,7 +502,13 @@ export default function AgeingReport() {
   );
 }
 
-function DetailedView({ invoices, filteredData, getDaysOverdue, getAgeBucket, navigate }) {
+function DetailedView({
+  invoices,
+  filteredData,
+  getDaysOverdue,
+  getAgeBucket,
+  navigate,
+}) {
   return (
     <div className="space-y-6">
       {filteredData.map((clientData) => {
@@ -498,7 +529,7 @@ function DetailedView({ invoices, filteredData, getDaysOverdue, getAgeBucket, na
                 <div className="text-right">
                   <p className="text-sm text-gray-600">Total Outstanding</p>
                   <p className="text-xl font-bold text-red-600">
-                    ₹{clientData.totalOutstanding.toLocaleString('en-IN')}
+                    ₹{clientData.totalOutstanding.toLocaleString("en-IN")}
                   </p>
                 </div>
               </div>
@@ -535,11 +566,11 @@ function DetailedView({ invoices, filteredData, getDaysOverdue, getAgeBucket, na
                     const isOverdue = daysOverdue > 0;
 
                     const bucketColors = {
-                      'NOT_DUE': 'bg-blue-100 text-blue-700',
-                      '0-30': 'bg-green-100 text-green-700',
-                      '31-60': 'bg-yellow-100 text-yellow-700',
-                      '61-90': 'bg-orange-100 text-orange-700',
-                      '90+': 'bg-red-100 text-red-700',
+                      NOT_DUE: "bg-blue-100 text-blue-700",
+                      "0-30": "bg-green-100 text-green-700",
+                      "31-60": "bg-yellow-100 text-yellow-700",
+                      "61-90": "bg-orange-100 text-orange-700",
+                      "90+": "bg-red-100 text-red-700",
                     };
 
                     return (
@@ -552,38 +583,46 @@ function DetailedView({ invoices, filteredData, getDaysOverdue, getAgeBucket, na
                         <td className="py-2 px-4">
                           <p
                             className={`text-sm ${
-                              isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'
+                              isOverdue
+                                ? "text-red-600 font-medium"
+                                : "text-gray-600"
                             }`}
                           >
-                            {new Date(invoice.dueDate).toLocaleDateString('en-IN')}
+                            {new Date(invoice.dueDate).toLocaleDateString(
+                              "en-IN"
+                            )}
                           </p>
                         </td>
                         <td className="py-2 px-4 text-right">
                           <p className="text-sm font-medium text-gray-900">
-                            ₹{invoice.balanceAmount?.toLocaleString('en-IN')}
+                            ₹{invoice.balanceAmount?.toLocaleString("en-IN")}
                           </p>
                         </td>
                         <td className="py-2 px-4 text-center">
                           <span
                             className={`text-sm ${
-                              isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'
+                              isOverdue
+                                ? "text-red-600 font-medium"
+                                : "text-gray-600"
                             }`}
                           >
-                            {isOverdue ? `${daysOverdue} days` : 'Not due'}
+                            {isOverdue ? `${daysOverdue} days` : "Not due"}
                           </span>
                         </td>
                         <td className="py-2 px-4 text-center">
                           <span
-                            className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              bucketColors[bucket]
-                            }`}
+                            className={`px-2 py-1 text-xs font-medium rounded-full ${bucketColors[bucket]}`}
                           >
-                            {bucket === 'NOT_DUE' ? 'Not Due' : `${bucket} days`}
+                            {bucket === "NOT_DUE"
+                              ? "Not Due"
+                              : `${bucket} days`}
                           </span>
                         </td>
                         <td className="py-2 px-4 text-center">
                           <button
-                            onClick={() => navigate(`/invoices/view/${invoice._id}`)}
+                            onClick={() =>
+                              navigate(`/invoices/view/${invoice._id}`)
+                            }
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                             title="View invoice"
                           >
