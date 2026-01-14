@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/AddEditInvoice.jsx
-// ENHANCED WITH FEATURES #1, #2, #5, #7, #8, #11, #19
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -139,24 +138,24 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
   const [tdsConfigs, setTdsConfigs] = useState([]);
   const [organization, setOrganization] = useState(null);
 
-  // ✅ FEATURE #19: Duplicate Check State
+ 
   const [duplicateCheckResult, setDuplicateCheckResult] = useState(null);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
 
-  // ✅ FEATURE #11: GST Calculation Metadata
+
   const [gstCalculation, setGstCalculation] = useState(null);
 
-  // ✅ FEATURE #36: File Upload State
+ 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(false);
   const [gstinEntries, setGstinEntries] = useState([]);
-  // ✅ FEATURE #30: Barcode Scanner State
+ 
   const [showScanner, setShowScanner] = useState(false);
   const [currentItemIndex, setCurrentItemIndex] = useState(null);
   const [showCategorySuggestion, setShowCategorySuggestion] = useState(false);
   const [currentItemForSuggestion, setCurrentItemForSuggestion] =
     useState(null);
-  // ✅ FEATURE #44: OCR Scanner State
+ 
   const [showOCR, setShowOCR] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -165,13 +164,13 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     invoiceDate: new Date().toISOString().split("T")[0],
     dueDate: "",
 
-    // ✅ FEATURE #7: Additional Fields
+    
     poNumber: "",
     poDate: "",
     contractNumber: "",
     salesPersonName: "",
 
-    // ✅ FEATURE #5: Payment Terms
+ 
     paymentTerms: 30,
 
     items: [
@@ -198,11 +197,10 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     tdsRate: 0,
     tdsAmount: 0,
 
-    // ✅ FEATURE #8: TCS Provision
     tcsApplicable: false,
     tcsRate: 0,
 
-    // ✅ FEATURE #2: Reverse Charge
+   
     reverseCharge: false,
 
     notes: "",
@@ -312,7 +310,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     }
   }, [id, isDuplicate, duplicateData]);
 
-  // ✅ FEATURE #5: Auto-calculate due date when payment terms change
+ 
   useEffect(() => {
     if (formData.invoiceDate && formData.paymentTerms) {
       const invoiceDate = new Date(formData.invoiceDate);
@@ -325,14 +323,14 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     }
   }, [formData.invoiceDate, formData.paymentTerms]);
 
-  // ✅ FEATURE #11: Calculate GST metadata when client or items change
+  //  Calculate GST metadata when client or items change
   useEffect(() => {
     if (formData.clientId && formData.items.length > 0 && organization) {
       calculateGSTMeta();
     }
   }, [formData.clientId, formData.items, organization]);
 
-  // ✅ FEATURE #29: Set invoice type from prop
+  //  Set invoice type from prop
   useEffect(() => {
     if (propInvoiceType && !isEditing) {
       setFormData((prev) => ({
@@ -445,7 +443,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     }
   };
 
-  // ✅ FEATURE #11: Calculate GST Metadata
+  // Calculate GST Metadata
   const calculateGSTMeta = async () => {
     try {
       const client = clients.find((c) => c._id === formData.clientId);
@@ -493,7 +491,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     }
   };
 
-  // ✅ FEATURE #19: Check for Duplicate Invoice Number
+  //Check for Duplicate Invoice Number
   const checkDuplicateInvoiceNumber = async (invoiceNumber) => {
     if (!invoiceNumber || isEditing) return;
 
@@ -756,7 +754,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
     const totalWithTax = taxableAmount + totalTax;
     const tdsAmount = (taxableAmount * formData.tdsRate) / 100;
 
-    // ✅ FEATURE #8: TCS Calculation
+    // TCS Calculation
     const tcsAmount = formData.tcsApplicable
       ? (taxableAmount * formData.tcsRate) / 100
       : 0;
@@ -932,7 +930,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
 
   const totals = calculateTotals();
 
-  // ✅ FEATURE #36: File Upload Handlers
+  // File Upload Handlers
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
     const validFiles = files.filter((file) => {
@@ -1140,7 +1138,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 </div>
               )}
 
-              {/* ✅ FEATURE #29: Hide invoice type dropdown when coming from Sales menu */}
+              {/*  Hide invoice type dropdown when coming from Sales menu */}
               {!propInvoiceType && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1226,7 +1224,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 </div>
               </div>
-              {/* ✅ FEATURE #5: Payment Terms Dropdown */}
+              {/* Payment Terms Dropdown */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Payment Terms <span className="text-red-500">*</span>
@@ -1271,7 +1269,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 </p>
               </div>
 
-              {/* ✅ FEATURE #7: Additional Fields */}
+              {/* Additional Fields */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   PO Number
@@ -1355,7 +1353,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
             </div>
           </div>
 
-          {/* ✅ FEATURE #2: Reverse Charge & FEATURE #8: TCS */}
+          {/* Reverse Charge &  TCS */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Special Tax Provisions
@@ -1447,7 +1445,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
             </div>
           </div>
 
-          {/* ✅ FEATURE #11: CGST/SGST Visual Indicator */}
+          {/*  CGST/SGST Visual Indicator */}
           {gstCalculation && formData.clientId && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
@@ -2064,7 +2062,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 placeholder="Payment terms, bank details, or any additional notes..."
               />
             </div>
-            {/* ✅ FEATURE #45: Smart Category Suggestion */}
+            {/*Smart Category Suggestion */}
             {formData.notes && formData.clientId && (
               <div className="mt-4">
                 <SmartCategorySuggestion
@@ -2097,7 +2095,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
             )}
           </div>
 
-          {/* ✅ FEATURE #36: Attachments Upload Section */}
+          {/* Attachments Upload Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               <Paperclip className="w-5 h-5 inline mr-2" />
@@ -2699,7 +2697,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
                 : "Create Invoice"}
             </button>
           </div>
-          {/* ✅ FEATURE #44: OCR DOCUMENT SCANNER MODAL */}
+          {/* OCR DOCUMENT SCANNER MODAL */}
           {showOCR && (
             <OCRDocumentScanner
               onDataExtracted={handleOCRDataExtracted}
@@ -2707,7 +2705,7 @@ export default function AddEditInvoice({ invoiceType: propInvoiceType }) {
             />
           )}
         </form>
-        {/* ✅ FEATURE #30: BARCODE SCANNER MODAL */}
+        {/* BARCODE SCANNER MODAL */}
         {showScanner && currentItemIndex !== null && (
           <ItemScanner
             onItemScanned={(product) => {

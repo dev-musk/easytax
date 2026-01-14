@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/main.jsx
-// ✅ FEATURE #29: Sales Tree Structure
 // ============================================
 
 import React from "react";
@@ -166,10 +165,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
-
-        {/* ============================================ */}
-        {/* SALES TREE STRUCTURE - Feature #29 */}
-        {/* ============================================ */}
 
         {/* Quotations */}
         <Route
@@ -548,9 +543,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
-        {/* ============================================ */}
-        {/* FEATURE #16: PURCHASE ORDERS */}
-        {/* ============================================ */}
+        
         <Route
           path="/purchase-orders"
           element={

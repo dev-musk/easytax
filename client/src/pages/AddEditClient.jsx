@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/AddEditClient.jsx
-// ✅ FIXED: Added Multi-Branch Management (Features #12-13)
 // ============================================
 
 import { useState, useEffect } from 'react';

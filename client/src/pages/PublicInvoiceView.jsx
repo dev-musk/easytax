@@ -1,6 +1,5 @@
 // ============================================
-// FILE: client/src/pages/PublicInvoiceView.jsx
-// ✅ FEATURE #34: Public Invoice View (No Auth Required)
+// FILE: client/src/pages/PublicInvoiceView.jsxx
 // ============================================
 
 import { useState, useEffect } from 'react';

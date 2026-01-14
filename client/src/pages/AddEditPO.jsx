@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/AddEditPO.jsx
-// ✅ FEATURE #16: PO Create/Edit Form
 // ============================================
 
 import { useState, useEffect } from 'react';

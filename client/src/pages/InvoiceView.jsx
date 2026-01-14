@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/InvoiceView.jsx
-// ENHANCED WITH FEATURES #32, #37, #41
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -50,11 +49,11 @@ export default function InvoiceView() {
   const [showUpiQr, setShowUpiQr] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(true); // Default open
 
-  // ✅ FEATURE #32: Quick Notes
+  // Quick Notes
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [newNote, setNewNote] = useState("");
 
-  // ✅ FEATURE #41: GST Filing Status
+  // GST Filing Status
   const [showFilingModal, setShowFilingModal] = useState(false);
   const [filingFormData, setFilingFormData] = useState({
     gstr1Filed: false,
@@ -62,7 +61,7 @@ export default function InvoiceView() {
     filingPeriod: "",
   });
 
-  // ✅ FEATURE #34: Share Link State
+  //  Share Link State
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -121,7 +120,7 @@ export default function InvoiceView() {
     }
   };
 
-  // ✅ FEATURE #32: Add Quick Note
+  //  Add Quick Note
   const handleAddNote = async () => {
     if (!newNote.trim()) {
       alert("Please enter a note");
@@ -155,7 +154,7 @@ export default function InvoiceView() {
     }
   };
 
-  // ✅ FEATURE #20: Get dynamic styles based on template settings
+  //  Get dynamic styles based on template settings
   const getInvoiceStyles = () => {
     const themeColor =
       THEME_COLORS[templateSettings.themeColor] || THEME_COLORS.BLUE;
@@ -179,7 +178,7 @@ export default function InvoiceView() {
 
   const styles = getInvoiceStyles();
 
-  // ✅ FEATURE #41: Update GST Filing Status
+  //  Update GST Filing Status
   const handleUpdateFilingStatus = async () => {
     try {
       await api.patch(`/api/invoices/${id}/filing-status`, filingFormData);
@@ -330,7 +329,7 @@ export default function InvoiceView() {
     }
   };
 
-  // ✅ FEATURE #34: Generate Share Link
+  //  Generate Share Link
   const handleGenerateShareLink = async (expiresIn) => {
     try {
       const response = await api.post(`/api/invoices/${id}/share`, {
@@ -349,7 +348,7 @@ export default function InvoiceView() {
     }
   };
 
-  // ✅ FEATURE #34: Disable Share Link
+  // Disable Share Link
   const handleDisableShareLink = async () => {
     if (
       !confirm(
@@ -370,7 +369,7 @@ export default function InvoiceView() {
     }
   };
 
-  // ✅ FEATURE #36: Download Attachment
+  //  Download Attachment
   const handleDownloadAttachment = async (attachmentId, filename) => {
     try {
       const response = await api.get(
@@ -445,7 +444,7 @@ export default function InvoiceView() {
     }
   };
 
-  // ✅ FEATURE #36: Delete Attachment
+  // Delete Attachment
   const handleDeleteAttachment = async (attachmentId) => {
     if (!confirm("Delete this attachment?")) return;
 
@@ -516,8 +515,8 @@ export default function InvoiceView() {
   return (
     <Layout>
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* ✅ FEATURE #37: ALL Action Buttons in Detail View */}
-        {/* ✅ IMPROVED: Collapsible Quick Actions */}
+        {/* ALL Action Buttons in Detail View */}
+        {/* Collapsible Quick Actions */}
         <div className="print:hidden space-y-4">
           {/* Back Button - Separate Row */}
           <div>
@@ -690,7 +689,7 @@ export default function InvoiceView() {
           </div>
         </div>
 
-        {/* ✅ FEATURE #41: GST Filing Status */}
+        {/*  GST Filing Status */}
         <div className="bg-white rounded-lg shadow-sm border p-4 print:hidden">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center gap-2">
@@ -773,7 +772,7 @@ export default function InvoiceView() {
           </div>
         </div>
 
-        {/* ✅ FEATURE #32: Quick Notes */}
+        {/* Quick Notes */}
         <div className="bg-white rounded-lg shadow-sm border p-4 print:hidden">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center gap-2">
@@ -837,7 +836,7 @@ export default function InvoiceView() {
           </div>
         </div>
 
-        {/* ✅ FEATURE #36: Attachments Section */}
+        {/*  Attachments Section */}
         <div className="bg-white rounded-lg shadow-sm border p-4 print:hidden">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center gap-2">
@@ -1534,7 +1533,7 @@ export default function InvoiceView() {
         />
       )}
 
-      {/* ✅ FEATURE #41: GST Filing Status Modal */}
+      {/*  GST Filing Status Modal */}
       {showFilingModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
@@ -1630,7 +1629,7 @@ export default function InvoiceView() {
         </div>
       )}
 
-      {/* ✅ FEATURE #34: Share Link Modal */}
+      {/*  Share Link Modal */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
@@ -1749,7 +1748,7 @@ export default function InvoiceView() {
         </div>
       )}
       {/* ← ADD THIS MODAL */}
-      {/* ✅ FEATURE #20: Template Settings Modal */}
+      {/* Template Settings Modal */}
       {showTemplateSettings && (
         <InvoiceTemplateSettings
           initialSettings={templateSettings}

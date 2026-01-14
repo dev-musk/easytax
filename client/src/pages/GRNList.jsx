@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/GRNList.jsx
-// ✅ FEATURE #46: THREE-WAY MATCHING - GRN Management
 // ============================================
 
 import { useState, useEffect } from 'react';

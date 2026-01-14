@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/Quotations.jsx
-// ✅ FEATURE #37: Simplified Actions (Only View & Convert buttons)
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -229,7 +228,7 @@ export default function Quotations() {
   );
 }
 
-// ✅ FEATURE #37: Simplified QuotationCard - Only View & Convert buttons
+// Simplified QuotationCard - Only View & Convert buttons
 function QuotationCard({ quotation, onConvert, onView, statusColors }) {
   const isExpired = new Date(quotation.validUntil) < new Date();
   const canConvert = !quotation.convertedToInvoice && !isExpired && quotation.status !== 'REJECTED';
@@ -278,7 +277,7 @@ function QuotationCard({ quotation, onConvert, onView, statusColors }) {
         </div>
       )}
 
-      {/* ✅ FEATURE #37: Only View & Convert buttons in list */}
+      {/*Only View & Convert buttons in list */}
       <div className="flex items-center gap-2 mt-4">
         <button
           onClick={() => onView(quotation._id)}

@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/ViewPO.jsx
-// ✅ FEATURE #16: PO Detail View
 // ============================================
 
 import { useState, useEffect } from 'react';

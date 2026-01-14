@@ -1,6 +1,6 @@
 // ============================================
 // FILE: client/src/components/Layout.jsx
-// ✅ FIXED: Dark mode styling + Working dropdowns + Better layout
+// ✅ FINAL: Complete Sales dropdown + All corrections
 // ============================================
 
 import { useState, useEffect, useRef } from "react";
@@ -37,10 +37,11 @@ import {
   Shield,
   Moon,
   Sun,
-  Palette,
-  Globe,
   User,
   Bell,
+  Mail,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 
 export default function Layout({ children }) {
@@ -48,87 +49,59 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+
+  // Sidebar collapse state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // ✅ Dark mode state
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
-  
-  // ✅ Dropdown states
+  // Dark mode state
+  const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
+
+  // Dropdown states
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
-  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  // ✅ Refs for click outside detection
+  // Refs for click outside detection
   const profileRef = useRef(null);
-  const colorRef = useRef(null);
-  const languageRef = useRef(null);
   const notificationsRef = useRef(null);
 
   // Menu states
-  const [salesOpen, setSalesOpen] = useState(true);
+  const [salesOpen, setSalesOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // ✅ Apply theme on mount
+  // Apply theme on mount
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, [theme]);
 
-  // ✅ Click outside to close dropdowns
+  // Click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (profileRef.current && !profileRef.current.contains(event.target)) {
         setProfileDropdownOpen(false);
       }
-      if (colorRef.current && !colorRef.current.contains(event.target)) {
-        setColorDropdownOpen(false);
-      }
-      if (languageRef.current && !languageRef.current.contains(event.target)) {
-        setLanguageDropdownOpen(false);
-      }
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+      if (
+        notificationsRef.current &&
+        !notificationsRef.current.contains(event.target)
+      ) {
         setNotificationsOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Theme toggle
+  // Theme toggle
   const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
+    const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
-
-  // ✅ Color theme
-  const [colorTheme, setColorTheme] = useState(localStorage.getItem('colorTheme') || 'blue');
-  
-  const handleColorChange = (color) => {
-    setColorTheme(color);
-    localStorage.setItem('colorTheme', color);
-    document.documentElement.setAttribute('data-theme', color);
-    setColorDropdownOpen(false);
-  };
-
-  // ✅ Language
-  const [language, setLanguage] = useState(localStorage.getItem('language') || 'en');
-  
-  const handleLanguageChange = (lang) => {
-    setLanguage(lang);
-    localStorage.setItem('language', lang);
-    setLanguageDropdownOpen(false);
+    localStorage.setItem("theme", newTheme);
   };
 
   const handleLogout = () => {
@@ -136,7 +109,7 @@ export default function Layout({ children }) {
     navigate("/login");
   };
 
-  // ✅ Navigation items (non-dropdown)
+  // Navigation items (non-dropdown)
   const navigationBeforeSales = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   ];
@@ -152,9 +125,10 @@ export default function Layout({ children }) {
   ];
 
   const navigationAfterAnalytics = [
-    { name: "Audit Trail", href: "/audit-trail", icon: Shield },
+    { name: "Audit Trails", href: "/audit-trail", icon: Shield },
   ];
 
+  // ✅ COMPLETE Sales Menu - ALL items restored
   const salesMenu = [
     { name: "Quotations", href: "/sales/quotations", icon: ClipboardList },
     { name: "Tax Invoice", href: "/sales/tax-invoice", icon: FileText },
@@ -169,15 +143,27 @@ export default function Layout({ children }) {
     { name: "Dashboard", href: "/analytics", icon: PieChart },
     { name: "Advanced Reports", href: "/reports", icon: BarChart3 },
     { name: "GST Reports", href: "/gst-reports", icon: Receipt },
-    { name: "Outstanding Reports", href: "/reports/outstanding", icon: TrendingDown },
+    {
+      name: "Outstanding Reports",
+      href: "/reports/outstanding",
+      icon: TrendingDown,
+    },
     { name: "Ageing Report", href: "/reports/ageing", icon: Clock },
   ];
 
   const settingsMenu = [
-    { name: "Company Settings", href: "/settings/organization", icon: Building2 },
+    {
+      name: "Company Settings",
+      href: "/settings/organization",
+      icon: Building2,
+    },
     { name: "Multi-GSTIN", href: "/multi-gstin", icon: Building2 },
     { name: "TDS Settings", href: "/settings/tds", icon: Percent },
-    { name: "WhatsApp Settings", href: "/settings/whatsapp", icon: MessageSquare },
+    {
+      name: "WhatsApp Settings",
+      href: "/settings/whatsapp",
+      icon: MessageSquare,
+    },
   ];
 
   const isActive = (path) => {
@@ -194,14 +180,17 @@ export default function Layout({ children }) {
     <Link
       to={item.href}
       onClick={() => mobile && setSidebarOpen(false)}
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+      className={`flex items-center ${
+        sidebarCollapsed ? "justify-center" : "gap-3"
+      } px-4 py-3 rounded-lg transition-colors group ${
         isActive(item.href)
-          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
       }`}
+      title={sidebarCollapsed ? item.name : ""}
     >
-      <item.icon className="w-5 h-5" />
-      <span>{item.name}</span>
+      <item.icon className="w-5 h-5 flex-shrink-0" />
+      {!sidebarCollapsed && <span>{item.name}</span>}
     </Link>
   );
 
@@ -217,21 +206,46 @@ export default function Layout({ children }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 left-0 z-50 h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-all duration-300 ease-in-out ${
+          sidebarCollapsed ? "w-20" : "w-64"
+        } ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } lg:translate-x-0`}
       >
         <div className="flex flex-col h-full">
-          {/* Logo */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center">
+          {/* Logo & Toggle */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            {!sidebarCollapsed && (
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-xl font-bold text-gray-900 dark:text-white">
+                  EasyTaxERP
+                </span>
+              </div>
+            )}
+
+            {sidebarCollapsed && (
+              <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center mx-auto">
                 <FileText className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-gray-900 dark:text-white">
-                EasyTax ERP
-              </span>
-            </div>
+            )}
+
+            {/* Desktop collapse toggle */}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden lg:block text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeft className="w-5 h-5" />
+              ) : (
+                <PanelLeftClose className="w-5 h-5" />
+              )}
+            </button>
+
+            {/* Mobile close button */}
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -241,36 +255,41 @@ export default function Layout({ children }) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {/* Dashboard */}
             {navigationBeforeSales.map((item) => (
               <NavItem key={item.name} item={item} mobile={true} />
             ))}
 
-            {/* Sales Dropdown */}
+            {/* Sales Dropdown - ✅ ALL 7 items included */}
             <div>
               <button
-                onClick={() => setSalesOpen(!salesOpen)}
-                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
+                onClick={() => !sidebarCollapsed && setSalesOpen(!salesOpen)}
+                className={`w-full flex items-center ${
+                  sidebarCollapsed ? "justify-center" : "justify-between"
+                } gap-3 px-4 py-3 rounded-lg transition-colors ${
                   location.pathname.startsWith("/sales") ||
                   location.pathname.startsWith("/invoices")
-                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
+                title={sidebarCollapsed ? "Sales" : ""}
               >
                 <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5" />
-                  <span>Sales</span>
+                  <FileText className="w-5 h-5 flex-shrink-0" />
+                  {!sidebarCollapsed && <span>Sales</span>}
                 </div>
-                <ChevronDown
-                  className={`w-4 h-4 transition-transform ${
-                    salesOpen ? "rotate-180" : ""
-                  }`}
-                />
+                {!sidebarCollapsed && (
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${
+                      salesOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                )}
               </button>
 
-              {salesOpen && (
-                <div className="mt-2 ml-4 space-y-1">
+              {salesOpen && !sidebarCollapsed && (
+                <div className="mt-1 ml-4 space-y-1">
                   {salesMenu.map((item) => (
                     <Link
                       key={item.name}
@@ -278,7 +297,7 @@ export default function Layout({ children }) {
                       onClick={() => setSidebarOpen(false)}
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors ${
                         isActive(item.href)
-                          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+                          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}
                     >
@@ -290,7 +309,7 @@ export default function Layout({ children }) {
               )}
             </div>
 
-            {/* Clients through HSN Codes */}
+            {/* Other nav items */}
             {navigationAfterSales.map((item) => (
               <NavItem key={item.name} item={item} mobile={true} />
             ))}
@@ -298,27 +317,34 @@ export default function Layout({ children }) {
             {/* Analytics & Reports Dropdown */}
             <div>
               <button
-                onClick={() => setAnalyticsOpen(!analyticsOpen)}
-                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
+                onClick={() =>
+                  !sidebarCollapsed && setAnalyticsOpen(!analyticsOpen)
+                }
+                className={`w-full flex items-center ${
+                  sidebarCollapsed ? "justify-center" : "justify-between"
+                } gap-3 px-4 py-3 rounded-lg transition-colors ${
                   location.pathname.startsWith("/analytics") ||
                   location.pathname.startsWith("/reports")
-                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
+                title={sidebarCollapsed ? "Analytics & Reports" : ""}
               >
                 <div className="flex items-center gap-3">
-                  <PieChart className="w-5 h-5" />
-                  <span>Analytics & Reports</span>
+                  <PieChart className="w-5 h-5 flex-shrink-0" />
+                  {!sidebarCollapsed && <span>Analytics & Reports</span>}
                 </div>
-                <ChevronDown
-                  className={`w-4 h-4 transition-transform ${
-                    analyticsOpen ? "rotate-180" : ""
-                  }`}
-                />
+                {!sidebarCollapsed && (
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${
+                      analyticsOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                )}
               </button>
 
-              {analyticsOpen && (
-                <div className="mt-2 ml-4 space-y-1">
+              {analyticsOpen && !sidebarCollapsed && (
+                <div className="mt-1 ml-4 space-y-1">
                   {analyticsMenu.map((item) => (
                     <Link
                       key={item.name}
@@ -326,7 +352,7 @@ export default function Layout({ children }) {
                       onClick={() => setSidebarOpen(false)}
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors ${
                         isActive(item.href)
-                          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+                          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}
                     >
@@ -346,26 +372,33 @@ export default function Layout({ children }) {
             {/* Settings Dropdown */}
             <div>
               <button
-                onClick={() => setSettingsOpen(!settingsOpen)}
-                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
+                onClick={() =>
+                  !sidebarCollapsed && setSettingsOpen(!settingsOpen)
+                }
+                className={`w-full flex items-center ${
+                  sidebarCollapsed ? "justify-center" : "justify-between"
+                } gap-3 px-4 py-3 rounded-lg transition-colors ${
                   location.pathname.startsWith("/settings")
-                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                     : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 }`}
+                title={sidebarCollapsed ? "Settings" : ""}
               >
                 <div className="flex items-center gap-3">
-                  <Settings className="w-5 h-5" />
-                  <span>Settings</span>
+                  <Settings className="w-5 h-5 flex-shrink-0" />
+                  {!sidebarCollapsed && <span>Settings</span>}
                 </div>
-                <ChevronDown
-                  className={`w-4 h-4 transition-transform ${
-                    settingsOpen ? "rotate-180" : ""
-                  }`}
-                />
+                {!sidebarCollapsed && (
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${
+                      settingsOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                )}
               </button>
 
-              {settingsOpen && (
-                <div className="mt-2 ml-4 space-y-1">
+              {settingsOpen && !sidebarCollapsed && (
+                <div className="mt-1 ml-4 space-y-1">
                   {settingsMenu.map((setting) => (
                     <Link
                       key={setting.name}
@@ -373,7 +406,7 @@ export default function Layout({ children }) {
                       onClick={() => setSidebarOpen(false)}
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-colors ${
                         isActive(setting.href)
-                          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-medium"
+                          ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}
                     >
@@ -384,36 +417,78 @@ export default function Layout({ children }) {
                 </div>
               )}
             </div>
+
+            {/* Support Section */}
+            {!sidebarCollapsed && (
+              <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 uppercase mb-2 px-4">
+                  SUPPORT
+                </p>
+                <Link
+                  to="mailto:support@easytax.com"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <Mail className="w-5 h-5" />
+                  <span>Email</span>
+                </Link>
+              </div>
+            )}
           </nav>
 
           {/* User Profile */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+          {!sidebarCollapsed && (
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                <div className="w-10 h-10 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-semibold text-sm">
+                    {user?.name?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {user?.name}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {user?.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 mt-2 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
+
+          {/* Collapsed mode user icon */}
+          {sidebarCollapsed && (
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col items-center gap-2">
               <div className="w-10 h-10 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center">
                 <span className="text-white font-semibold text-sm">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {user?.name}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
-              </div>
+              <button
+                onClick={handleLogout}
+                className="w-10 h-10 flex items-center justify-center rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 mt-2 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Logout</span>
-            </button>
-          </div>
+          )}
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="lg:ml-64">
+      <div
+        className={`transition-all duration-300 ${
+          sidebarCollapsed ? "lg:ml-20" : "lg:ml-64"
+        }`}
+      >
         {/* Top Bar */}
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 transition-colors duration-200">
           <div className="flex items-center justify-between px-4 py-4 gap-4">
@@ -425,33 +500,35 @@ export default function Layout({ children }) {
               <Menu className="w-6 h-6" />
             </button>
 
-            {/* ✅ Search Bar - Wider */}
-            <div className="flex-1 max-w-2xl">
+            {/* ✅ Wider Search Bar */}
+            <div className="flex-1 max-w-3xl">
               <GlobalSearch />
             </div>
 
-            {/* ✅ Top Right Options - All at the end */}
-            <div className="hidden lg:flex items-center gap-2">
-              {/* Dark Mode Toggle */}
+            {/* Top Right Options */}
+            <div className="hidden lg:flex items-center gap-3">
+              {/* ✅ Dark Mode Toggle - Round Border */}
               <button
                 onClick={toggleTheme}
-                className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title={
+                  theme === "light"
+                    ? "Switch to Dark Mode"
+                    : "Switch to Light Mode"
+                }
               >
-                {theme === 'light' ? (
+                {theme === "light" ? (
                   <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 ) : (
                   <Sun className="w-5 h-5 text-yellow-500" />
                 )}
               </button>
 
-             
-
-              {/* Notifications */}
+              {/* ✅ Notifications - Round Border */}
               <div className="relative" ref={notificationsRef}>
                 <button
                   onClick={() => setNotificationsOpen(!notificationsOpen)}
-                  className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative"
+                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative"
                   title="Notifications"
                 >
                   <Bell className="w-5 h-5 text-gray-700 dark:text-gray-300" />
@@ -461,16 +538,26 @@ export default function Layout({ children }) {
                 {notificationsOpen && (
                   <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
                     <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Notifications
+                      </h3>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       <div className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <p className="text-sm text-gray-900 dark:text-gray-100">New invoice created</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">2 hours ago</p>
+                        <p className="text-sm text-gray-900 dark:text-gray-100">
+                          New invoice created
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          2 hours ago
+                        </p>
                       </div>
                       <div className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <p className="text-sm text-gray-900 dark:text-gray-100">Payment received</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">5 hours ago</p>
+                        <p className="text-sm text-gray-900 dark:text-gray-100">
+                          Payment received
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          5 hours ago
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -490,10 +577,10 @@ export default function Layout({ children }) {
                   </div>
                   <div className="text-left hidden xl:block">
                     <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {user?.name}
+                      {user?.name?.split(" ")[0] || "User"}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {user?.organizationName || "Admin"}
+                      UserName
                     </p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -502,8 +589,12 @@ export default function Layout({ children }) {
                 {profileDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
                     <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {user?.name}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {user?.email}
+                      </p>
                     </div>
                     <Link
                       to="/profile"
@@ -511,7 +602,9 @@ export default function Layout({ children }) {
                       onClick={() => setProfileDropdownOpen(false)}
                     >
                       <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">My Profile</span>
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        My Profile
+                      </span>
                     </Link>
                     <Link
                       to="/settings/organization"
@@ -519,7 +612,9 @@ export default function Layout({ children }) {
                       onClick={() => setProfileDropdownOpen(false)}
                     >
                       <Settings className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Settings</span>
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        Settings
+                      </span>
                     </Link>
                     <div className="border-t border-gray-200 dark:border-gray-700 my-2"></div>
                     <button
@@ -540,9 +635,7 @@ export default function Layout({ children }) {
         </header>
 
         {/* Page Content */}
-        <main className="p-6">
-          {children}
-        </main>
+        <main className="p-6">{children}</main>
       </div>
     </div>
   );

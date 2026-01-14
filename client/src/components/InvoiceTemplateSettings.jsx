@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/components/InvoiceTemplateSettings.jsx
-// ✅ FEATURE #20: Invoice Design Customization Component
 // ============================================
 
 import { useState } from "react";

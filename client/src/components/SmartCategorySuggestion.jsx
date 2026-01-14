@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/components/SmartCategorySuggestion.jsx
-// ✅ FEATURE #45: SMART CATEGORIZATION WITH LEARNING
 // ============================================
 
 import { useState, useEffect } from 'react';

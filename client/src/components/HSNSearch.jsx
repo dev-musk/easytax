@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/components/HSNSearch.jsx
-// HSN/SAC Code Search Autocomplete Component
 // ============================================
 
 import { useState, useEffect, useRef } from 'react';

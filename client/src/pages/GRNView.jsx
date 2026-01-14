@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/GRNView.jsx
-// ✅ FEATURE #46: GRN View Details Page
 // CREATE THIS NEW FILE
 // ============================================
 

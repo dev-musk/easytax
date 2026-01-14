@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/AddEditGRN.jsx
-// ✅ FEATURE #46: GRN Creation Form - CORRECTED
 // ============================================
 
 import { useState, useEffect } from 'react';

@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/Reports.jsx
-// ✅ FEATURE #17: Advanced Reports - FIXED with Empty States
 // ============================================
 
 import { useState, useEffect } from "react";

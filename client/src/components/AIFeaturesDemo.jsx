@@ -1,7 +1,5 @@
 // ============================================
 // FILE: client/src/components/AIFeaturesDemo.jsx
-// ✅ DEMO: OCR + SMART CATEGORIZATION INTEGRATION
-// This component demonstrates how both AI features work together
 // ============================================
 
 import { useState } from 'react';

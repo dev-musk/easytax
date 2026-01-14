@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/InventoryDashboard.jsx
-// ✅ FEATURE #40: REAL-TIME INVENTORY INTELLIGENCE
 // ============================================
 
 import { useState, useEffect } from 'react';

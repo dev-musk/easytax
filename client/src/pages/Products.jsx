@@ -1,6 +1,5 @@
 // ============================================
 // FILE: client/src/pages/Products.jsx
-// FEATURE #28: Products → Items Master List
 // ============================================
 
 import { useState, useEffect } from "react";

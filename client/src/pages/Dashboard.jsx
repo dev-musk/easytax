@@ -1,6 +1,6 @@
 // ============================================
-// FILE: client/src/pages/Dashboard.jsx
-// ✅ Exact replica of the dashboard design
+// FILE: client/src/pages/Dashboard-DEBUG.jsx
+// ✅ ENHANCED: With visual debugging markers
 // ============================================
 
 import { useState, useEffect } from 'react';
@@ -11,7 +11,6 @@ import { useAuthStore } from '../store/authStore';
 import { 
   FileText, 
   Users, 
-  DollarSign, 
   TrendingUp, 
   TrendingDown,
   Package,
@@ -20,24 +19,38 @@ import {
   BarChart3,
   PieChart,
   MoreVertical,
-  Calendar
+  Calendar,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const [stats, setStats] = useState(null);
+  const [billsStats, setBillsStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('overview');
+  const [dateRange, setDateRange] = useState({ start: '05 Feb', end: '06 March' });
 
   useEffect(() => {
-    fetchStats();
+    fetchAllStats();
   }, []);
 
-  const fetchStats = async () => {
+  const fetchAllStats = async () => {
     try {
-      const response = await api.get('/api/dashboard/stats');
-      setStats(response.data);
+      const [statsResponse, billsResponse] = await Promise.all([
+        api.get('/api/dashboard/stats'),
+        api.get('/api/dashboard/bills-summary')
+      ]);
+      
+      setStats(statsResponse.data);
+      setBillsStats(billsResponse.data);
+      
+      // 🔍 DEBUG: Log chart data
+      console.log('📊 Chart Data Received:');
+      console.log('Monthly Trend:', statsResponse.data.monthlyTrend);
+      console.log('Non-zero months:', statsResponse.data.monthlyTrend.filter(m => m.revenue > 0).length);
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
@@ -55,103 +68,163 @@ export default function Dashboard() {
     );
   }
 
-  // Get user's first name
-  const userName = user?.name?.split(' ')[0] || 'User';
+  const organizationName = user?.organizationName || 'Muskdeer';
 
-  // Quick Links Data - exactly as in image
   const quickLinks = [
     { 
       icon: FileText, 
       label: 'New Invoice', 
-      bgColor: 'bg-blue-50 dark:bg-blue-900/20', 
+      iconBg: 'bg-blue-100 dark:bg-blue-900/30',
       iconColor: 'text-blue-600 dark:text-blue-400',
       onClick: () => navigate('/sales/tax-invoice/add') 
     },
     { 
       icon: Users, 
       label: 'New Clients', 
-      bgColor: 'bg-orange-50 dark:bg-orange-900/20', 
+      iconBg: 'bg-orange-100 dark:bg-orange-900/30',
       iconColor: 'text-orange-600 dark:text-orange-400',
       onClick: () => navigate('/clients/add') 
     },
     { 
       icon: Receipt, 
       label: 'Payments', 
-      bgColor: 'bg-red-50 dark:bg-red-900/20', 
+      iconBg: 'bg-red-100 dark:bg-red-900/30',
       iconColor: 'text-red-600 dark:text-red-400',
       onClick: () => navigate('/payments') 
     },
     { 
       icon: PieChart, 
       label: 'Analyses', 
-      bgColor: 'bg-green-50 dark:bg-green-900/20', 
+      iconBg: 'bg-green-100 dark:bg-green-900/30',
       iconColor: 'text-green-600 dark:text-green-400',
       onClick: () => navigate('/analytics') 
     },
     { 
       icon: BarChart3, 
       label: 'GST Reports', 
-      bgColor: 'bg-blue-50 dark:bg-blue-900/20', 
+      iconBg: 'bg-blue-100 dark:bg-blue-900/30',
       iconColor: 'text-blue-600 dark:text-blue-400',
       onClick: () => navigate('/gst-reports') 
     },
     { 
       icon: CreditCard, 
       label: 'Payments', 
-      bgColor: 'bg-yellow-50 dark:bg-yellow-900/20', 
+      iconBg: 'bg-yellow-100 dark:bg-yellow-900/30',
       iconColor: 'text-yellow-600 dark:text-yellow-400',
       onClick: () => navigate('/payments') 
     },
   ];
 
-  // Calculate stats
   const monthlyRevenue = stats?.monthlyRevenue || 0;
   const totalClients = stats?.totalClients || 0;
-  const totalExpenses = 45000; // Mock data as per image
+  const totalExpenses = stats?.totalExpenses || 0;
 
-  // Generate chart points based on real data or mock
-  const generateChartPoints = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const width = 800;
-    const height = 200;
-    const maxValue = 1000;
-    
-    // Blue line (revenue trend)
-    const bluePoints = months.map((_, idx) => {
-      const x = (idx / (months.length - 1)) * width;
-      const baseValue = 500 + Math.sin(idx * 0.5) * 150;
-      const variation = Math.random() * 100 - 50;
-      const y = height - ((baseValue + variation) / maxValue) * height;
-      return `${x},${y}`;
-    }).join(' ');
+  const billsRaised = billsStats?.billsRaised || 0;
+  const billsReceived = billsStats?.billsReceived || 0;
+  const billsPending = billsStats?.billsPending || 0;
 
-    // Gray line (expenses trend)
-    const grayPoints = months.map((_, idx) => {
-      const x = (idx / (months.length - 1)) * width;
-      const baseValue = 350 + Math.sin(idx * 0.3) * 80;
-      const variation = Math.random() * 60 - 30;
-      const y = height - ((baseValue + variation) / maxValue) * height;
-      return `${x},${y}`;
-    }).join(' ');
+  const billsRaisedTrend = billsStats?.raisedTrend || 5.2;
+  const billsReceivedTrend = billsStats?.receivedTrend || 3.8;
+  const billsPendingTrend = billsStats?.pendingTrend || 2.5;
 
-    return { bluePoints, grayPoints };
+  const formatCurrency = (amount) => {
+    if (amount >= 10000000) {
+      return `₹${(amount / 10000000).toFixed(1)}Cr`;
+    } else if (amount >= 100000) {
+      return `₹${(amount / 100000).toFixed(1)}L`;
+    } else if (amount >= 1000) {
+      return `₹${(amount / 1000).toFixed(1)}K`;
+    }
+    return `₹${amount}`;
   };
 
-  const { bluePoints, grayPoints } = generateChartPoints();
+  // ✅ Enhanced chart generation with debugging
+  const generateChartPoints = () => {
+    const monthlyTrend = stats?.monthlyTrend || [];
+    const width = 780; // ✅ Reduced to prevent clipping at edges
+    const height = 200;
+    
+    console.log('🎨 Generating chart with', monthlyTrend.length, 'data points');
+    
+    if (monthlyTrend.length === 0) {
+      const months = 12;
+      const bluePoints = Array.from({ length: months }, (_, idx) => {
+        const x = (idx / (months - 1)) * width;
+        const baseValue = 500 + Math.sin(idx * 0.8) * 150;
+        const y = height - ((baseValue / 1000) * height * 0.8);
+        return `${x},${y}`;
+      }).join(' ');
+      
+      const grayPoints = Array.from({ length: months }, (_, idx) => {
+        const x = (idx / (months - 1)) * width;
+        const baseValue = 350 + Math.sin(idx * 0.5) * 100;
+        const y = height - ((baseValue / 1000) * height * 0.8);
+        return `${x},${y}`;
+      }).join(' ');
+      
+      return { 
+        bluePoints, 
+        grayPoints, 
+        maxValue: 1000, 
+        yAxisLabels: [1000, 800, 600, 400, 200, 0],
+        dataPoints: [] 
+      };
+    }
+
+    const maxValue = Math.max(...monthlyTrend.map(m => m.revenue || 0), 1000);
+    
+    console.log('📈 Max Value:', maxValue.toLocaleString('en-IN'));
+    
+    const dataPoints = [];
+    
+    const bluePoints = monthlyTrend.map((month, idx) => {
+      const x = (idx / (monthlyTrend.length - 1)) * width;
+      const y = height - ((month.revenue / maxValue) * height * 0.9);
+      
+      // 🔍 Store point data for debugging
+      dataPoints.push({ x, y, revenue: month.revenue, month: month.month });
+      
+      console.log(`Point ${idx}: x=${x.toFixed(0)}, y=${y.toFixed(0)}, revenue=${month.revenue}`);
+      
+      return `${x},${y}`;
+    }).join(' ');
+
+    const grayPoints = monthlyTrend.map((month, idx) => {
+      const x = (idx / (monthlyTrend.length - 1)) * width;
+      const baseValue = month.revenue * 0.6;
+      const y = height - ((baseValue / maxValue) * height * 0.9);
+      return `${x},${y}`;
+    }).join(' ');
+
+    const yAxisLabels = [];
+    const step = maxValue / 5;
+    for (let i = 5; i >= 0; i--) {
+      const value = Math.round((step * i) / 1000);
+      yAxisLabels.push(value);
+    }
+
+    console.log('✅ Chart generated successfully');
+    console.log('Blue points:', bluePoints);
+
+    return { bluePoints, grayPoints, maxValue, yAxisLabels, dataPoints };
+  };
+
+  const { bluePoints, grayPoints, maxValue, yAxisLabels, dataPoints } = generateChartPoints();
+
+  const clientTrend = stats?.clientGrowth || 11.01;
+  const expensesTrend = stats?.expensesChange || 9.05;
 
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Header */}
         <div>
           <p className="text-sm text-gray-500 dark:text-gray-400">Dashboard</p>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-1">
-            Hi {userName} Deer!
+            Hi {organizationName} Deer!
           </h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Quick Links & Stats */}
           <div className="lg:col-span-2 space-y-6">
             {/* Quick Links */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
@@ -166,20 +239,21 @@ export default function Dashboard() {
                   <button
                     key={idx}
                     onClick={link.onClick}
-                    className={`flex flex-col items-center gap-3 p-4 rounded-xl ${link.bgColor} hover:shadow-md transition-all cursor-pointer`}
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all cursor-pointer"
                   >
-                    <div className="p-3 bg-white dark:bg-gray-700 rounded-lg shadow-sm">
-                      <link.icon className={`w-6 h-6 ${link.iconColor}`} />
+                    <div className={`p-2.5 ${link.iconBg} rounded-lg flex-shrink-0`}>
+                      <link.icon className={`w-5 h-5 ${link.iconColor}`} />
                     </div>
-                    <span className={`text-sm font-medium ${link.iconColor}`}>{link.label}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white text-left">
+                      {link.label}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Stats Cards Row */}
+            {/* Stats Cards */}
             <div className="grid grid-cols-2 gap-6">
-              {/* Total Clients */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl">
@@ -187,16 +261,17 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Clients</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                  {totalClients < 10 ? `0${totalClients}` : totalClients}
-                </p>
-                <div className="flex items-center gap-1">
-                  <TrendingUp className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-green-600 font-medium">11.01%</span>
+                <div className="flex items-end justify-between">
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                    {totalClients < 10 ? `0${totalClients}` : totalClients}
+                  </p>
+                  <div className="flex items-center gap-1 text-green-600">
+                    <ArrowUp className="w-4 h-4" />
+                    <span className="text-sm font-medium">{clientTrend.toFixed(2)}%</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Total Expenses */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl">
@@ -204,19 +279,25 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Expenses</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                  ₹{totalExpenses.toLocaleString('en-IN')}
-                </p>
-                <div className="flex items-center gap-1">
-                  <TrendingDown className="w-4 h-4 text-red-600" />
-                  <span className="text-sm text-red-600 font-medium">9.05%</span>
+                <div className="flex items-end justify-between">
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                    {formatCurrency(totalExpenses)}
+                  </p>
+                  <div className={`flex items-center gap-1 ${expensesTrend < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {expensesTrend < 0 ? (
+                      <ArrowDown className="w-4 h-4" />
+                    ) : (
+                      <ArrowUp className="w-4 h-4" />
+                    )}
+                    <span className="text-sm font-medium">{Math.abs(expensesTrend).toFixed(2)}%</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Statistics Chart */}
+            {/* ✅ ENHANCED Statistics Chart with visible markers */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Statistics</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Target you've set for each month</p>
@@ -252,23 +333,28 @@ export default function Dashboard() {
                   >
                     12 Months
                   </button>
-                  <button className="px-4 py-2 rounded-lg text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 border border-gray-200 dark:border-gray-600">
+                  <button 
+                    onClick={() => {
+                      alert('Date picker coming soon!');
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 border border-gray-200 dark:border-gray-600"
+                  >
                     <Calendar className="w-4 h-4" />
-                    <span>05 Feb - 06 March</span>
+                    <span>{dateRange.start} - {dateRange.end}</span>
                   </button>
                 </div>
               </div>
 
-              {/* Line Chart */}
+              {/* ✅ ENHANCED Chart with debug markers */}
               <div className="h-72 relative">
-                <svg className="w-full h-full" viewBox="0 0 800 240" preserveAspectRatio="none">
+                <svg className="w-full h-full" viewBox="0 0 800 240" preserveAspectRatio="xMidYMid meet">
                   {/* Grid lines */}
                   {[0, 1, 2, 3, 4, 5].map((i) => (
                     <line
                       key={i}
-                      x1="0"
+                      x1="10"
                       y1={40 * i}
-                      x2="800"
+                      x2="790"
                       y2={40 * i}
                       stroke="currentColor"
                       className="text-gray-200 dark:text-gray-700"
@@ -276,35 +362,67 @@ export default function Dashboard() {
                     />
                   ))}
                   
-                  {/* Blue line (top) */}
-                  <polyline
-                    points={bluePoints}
-                    fill="none"
-                    stroke="#3B82F6"
-                    strokeWidth="2"
-                  />
-                  
-                  {/* Blue area fill */}
+                  {/* Blue area fill FIRST (below line) */}
                   <polygon
-                    points={`${bluePoints} 800,240 0,240`}
+                    points={`10,200 ${bluePoints} 790,200`}
                     fill="url(#blueGradient)"
                     opacity="0.2"
                   />
                   
-                  {/* Gray line (bottom) */}
+                  {/* Gray area fill */}
+                  <polygon
+                    points={`10,200 ${grayPoints} 790,200`}
+                    fill="url(#grayGradient)"
+                    opacity="0.1"
+                  />
+                  
+                  {/* Gray line */}
                   <polyline
                     points={grayPoints}
                     fill="none"
                     stroke="#9CA3AF"
-                    strokeWidth="2"
+                    strokeWidth="2.5"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
                   />
                   
-                  {/* Gray area fill */}
-                  <polygon
-                    points={`${grayPoints} 800,240 0,240`}
-                    fill="url(#grayGradient)"
-                    opacity="0.1"
+                  {/* Blue line (MAIN) */}
+                  <polyline
+                    points={bluePoints}
+                    fill="none"
+                    stroke="#3B82F6"
+                    strokeWidth="4"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
                   />
+                  
+                  {/* ✅ ADD: Data point markers for non-zero values */}
+                  {dataPoints.map((point, idx) => {
+                    if (point.revenue > 0) {
+                      return (
+                        <g key={`marker-${idx}`}>
+                          {/* Outer glow */}
+                          <circle
+                            cx={point.x + 10}
+                            cy={point.y}
+                            r="8"
+                            fill="#3B82F6"
+                            opacity="0.3"
+                          />
+                          {/* Main dot */}
+                          <circle
+                            cx={point.x + 10}
+                            cy={point.y}
+                            r="5"
+                            fill="#3B82F6"
+                            stroke="white"
+                            strokeWidth="2"
+                          />
+                        </g>
+                      );
+                    }
+                    return null;
+                  })}
                   
                   <defs>
                     <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -327,30 +445,35 @@ export default function Dashboard() {
                 
                 {/* Y-axis labels */}
                 <div className="absolute left-0 top-0 bottom-8 flex flex-col justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span>1000</span>
-                  <span>800</span>
-                  <span>600</span>
-                  <span>400</span>
-                  <span>200</span>
-                  <span>0</span>
+                  {yAxisLabels.map((label, idx) => (
+                    <span key={idx}>{label}K</span>
+                  ))}
                 </div>
+              </div>
+              
+              {/* ✅ DEBUG INFO */}
+              <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded text-xs text-gray-600 dark:text-gray-400">
+                <p><strong>Debug Info:</strong></p>
+                <p>Data points: {stats?.monthlyTrend?.length || 0} | Non-zero: {dataPoints.filter(p => p.revenue > 0).length} | Max: ₹{maxValue.toLocaleString('en-IN')}</p>
               </div>
             </div>
           </div>
 
-          {/* Right Column - Monthly Revenue */}
+          {/* Right Column */}
           <div className="space-y-6">
             {/* Monthly Revenue Card */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Monthly Revenue</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
                 Revenue breakdown for each month of the fiscal year
               </p>
 
-              {/* Circular Revenue Display */}
               <div className="relative flex items-center justify-center mb-6" style={{ height: '280px' }}>
-                <svg className="w-64 h-64 transform -rotate-90">
-                  {/* Background circle */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-48 h-48 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/20 dark:to-blue-800/10 rounded-full blur-2xl opacity-60"></div>
+                </div>
+                
+                <svg className="w-64 h-64 transform -rotate-90 relative z-10">
                   <circle
                     cx="128"
                     cy="128"
@@ -360,7 +483,6 @@ export default function Dashboard() {
                     className="text-gray-100 dark:text-gray-700"
                     strokeWidth="12"
                   />
-                  {/* Progress circle */}
                   <circle
                     cx="128"
                     cy="128"
@@ -379,9 +501,7 @@ export default function Dashboard() {
                   </defs>
                 </svg>
 
-                {/* Center content */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  {/* Month markers with dots */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
                   <div className="absolute w-full h-full">
                     {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, idx) => {
                       const angle = (idx * 30 - 90) * (Math.PI / 180);
@@ -389,7 +509,6 @@ export default function Dashboard() {
                       const x = 128 + radius * Math.cos(angle);
                       const y = 128 + radius * Math.sin(angle);
                       
-                      // Dot positions (slightly inside the arc)
                       const dotRadius = 106;
                       const dotX = 128 + dotRadius * Math.cos(angle);
                       const dotY = 128 + dotRadius * Math.sin(angle);
@@ -444,18 +563,33 @@ export default function Dashboard() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Bills Raised</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white mb-1">$20K</p>
-                  <TrendingUp className="w-4 h-4 text-green-600 mx-auto" />
+                  <p className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                    {formatCurrency(billsRaised)}
+                  </p>
+                  <div className="flex items-center justify-center gap-1 text-green-600">
+                    <ArrowUp className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">{billsRaisedTrend.toFixed(1)}%</span>
+                  </div>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Bills Received</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white mb-1">$16K</p>
-                  <TrendingUp className="w-4 h-4 text-green-600 mx-auto" />
+                  <p className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                    {formatCurrency(billsReceived)}
+                  </p>
+                  <div className="flex items-center justify-center gap-1 text-green-600">
+                    <ArrowUp className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">{billsReceivedTrend.toFixed(1)}%</span>
+                  </div>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Bills Pending</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white mb-1">$1.5K</p>
-                  <TrendingUp className="w-4 h-4 text-green-600 mx-auto" />
+                  <p className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                    {formatCurrency(billsPending)}
+                  </p>
+                  <div className="flex items-center justify-center gap-1 text-green-600">
+                    <ArrowUp className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">{billsPendingTrend.toFixed(1)}%</span>
+                  </div>
                 </div>
               </div>
             </div>
