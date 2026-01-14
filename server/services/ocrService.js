@@ -1,26 +1,58 @@
-import Tesseract from "tesseract.js";
+// ============================================
+// FILE: server/services/ocrService.js
+// ✅ FIXED: Conditional imports for Linux compatibility
+// ============================================
+
 import fs from "fs";
 import path from "path";
 import os from "os";
-import pdf from "pdf-poppler";
 
-export async function extractTextFromImage(filePath, mimeType, originalName)
- {
+// ✅ FIX: Conditional imports - only load on platforms with system dependencies
+let Tesseract = null;
+let pdf = null;
+
+const isLinux = process.platform === 'linux';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Only import OCR packages if NOT on Linux production (or if Docker with dependencies)
+if (!isLinux || process.env.OCR_ENABLED === 'true') {
+  try {
+    console.log('📦 Loading OCR dependencies...');
+    const tesseractModule = await import('tesseract.js');
+    Tesseract = tesseractModule.default;
+    
+    const pdfModule = await import('pdf-poppler');
+    pdf = pdfModule.default;
+    
+    console.log('✅ OCR dependencies loaded successfully');
+  } catch (error) {
+    console.warn('⚠️ OCR dependencies not available:', error.message);
+    console.warn('   OCR features will be disabled');
+  }
+}
+
+export async function extractTextFromImage(filePath, mimeType, originalName) {
+  // ✅ FIX: Check if OCR is available before processing
+  if (!Tesseract || !pdf) {
+    console.error('❌ OCR not available on this platform');
+    throw new Error(
+      'OCR feature is not available. Please contact administrator to enable OCR support.'
+    );
+  }
+
   let tempDir = null;
-  let imagePathsToProcess = []; // ✅ FIX
-
+  let imagePathsToProcess = [];
 
   try {
     console.log("🔍 Starting OCR extraction...");
     console.log("📂 File:", filePath);
 
-   const isPDF =
-  mimeType === "application/pdf" ||
-  originalName?.toLowerCase().endsWith(".pdf");
+    const isPDF =
+      mimeType === "application/pdf" ||
+      originalName?.toLowerCase().endsWith(".pdf");
 
-if (isPDF) {
-  console.log("📄 PDF detected via mimetype/originalname");
-
+    if (isPDF) {
+      console.log("📄 PDF detected via mimetype/originalname");
 
       // Create unique temp directory for this conversion
       tempDir = path.join(
@@ -29,7 +61,7 @@ if (isPDF) {
       );
 
       try {
-        imagePathsToProcess = [filePath];
+        imagePathsToProcess = await convertPdfToImages(filePath, tempDir);
 
         console.log(
           `✅ PDF converted to ${imagePathsToProcess.length} image(s)`
@@ -129,7 +161,7 @@ if (isPDF) {
     console.error("Stack:", error.stack);
     throw new Error(`OCR processing failed: ${error.message}`);
   } finally {
-    // ✅ CRITICAL FIX: Cleanup temp directory after processing
+    // Cleanup temp directory after processing
     if (tempDir && fs.existsSync(tempDir)) {
       try {
         console.log("🗑️ Cleaning up temporary directory...");
@@ -154,6 +186,10 @@ if (isPDF) {
 }
 
 async function convertPdfToImages(pdfPath, outputDir) {
+  if (!pdf) {
+    throw new Error('PDF conversion not available - pdf-poppler not loaded');
+  }
+
   try {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -370,7 +406,13 @@ export function validateGSTIN(gstin) {
   return gstinPattern.test(gstin);
 }
 
+// ✅ Export availability status
+export function isOCRAvailable() {
+  return Tesseract !== null && pdf !== null;
+}
+
 export default {
   extractTextFromImage,
   validateGSTIN,
+  isOCRAvailable,
 };
