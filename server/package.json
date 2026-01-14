@@ -22,12 +22,8 @@
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^6.9.13",
-    "pdf-parse": "^2.4.5",
-    "pdf-poppler": "^0.2.3",
-    "pdf2pic": "^3.2.0",
-    "pdfjs-dist": "^5.4.530",
-    "sharp": "^0.34.5",
-    "tesseract.js": "^7.0.0"
+    "puppeteer": "^24.35.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
