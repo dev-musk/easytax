@@ -1,421 +1,178 @@
 // ============================================
-// FILE: server/services/emailService.js
-// ✅ FEATURE #2: Send Invoice Reminder Emails
+// FILE: server/routes/reminders.js
 // ============================================
 
-import nodemailer from 'nodemailer';
+import express from 'express';
+import { protect } from '../middleware/auth.js';
+import Invoice from '../models/Invoice.js';
+import Organization from '../models/Organization.js';
+import { sendInvoiceReminder, testEmailConfig } from '../services/emailService.js';
+import { triggerRemindersNow, triggerDailyReportNow } from '../services/scheduler.js';
+import { generateDailyReport } from '../services/reportGenerator.js';
+import { sendDailyReport } from '../services/emailService.js';
 
-// ✅ Create email transporter
-let transporter = null;
+const router = express.Router();
 
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-};
+router.use(protect);
 
-// ✅ Initialize transporter
-const getTransporter = () => {
-  if (!transporter) {
-    transporter = createTransporter();
+// ✅ FEATURE #27: Send manual reminder for specific invoice
+router.post('/invoices/:id/send-reminder', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organization: organizationId,
+    }).populate('client');
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    if (!invoice.client || !invoice.client.email) {
+      return res.status(400).json({ error: 'Client email not found' });
+    }
+
+    const organization = await Organization.findById(organizationId);
+
+    // Send reminder
+    const result = await sendInvoiceReminder(invoice, organization, invoice.client);
+
+    // Track reminder
+    if (!invoice.remindersSent) {
+      invoice.remindersSent = [];
+    }
+    invoice.remindersSent.push({
+      sentAt: new Date(),
+      sentTo: invoice.client.email,
+      type: 'MANUAL',
+      sentBy: req.user.id,
+    });
+    await invoice.save();
+
+    res.json({
+      success: true,
+      message: 'Payment reminder sent successfully',
+      sentTo: invoice.client.email,
+      messageId: result.messageId,
+    });
+
+  } catch (error) {
+    console.error('Send reminder error:', error);
+    res.status(500).json({ 
+      error: 'Failed to send reminder', 
+      details: error.message 
+    });
   }
-  return transporter;
-};
+});
+
+// ✅ Get reminder history for an invoice
+router.get('/invoices/:id/reminder-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organization: organizationId,
+    }).select('remindersSent');
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    res.json({
+      reminders: invoice.remindersSent || [],
+      count: invoice.remindersSent?.length || 0,
+    });
+
+  } catch (error) {
+    console.error('Get reminder history error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ✅ Test email configuration
-export const testEmailConfig = async () => {
+router.post('/test-email', async (req, res) => {
   try {
-    const mailer = getTransporter();
-    await mailer.verify();
-    console.log('✅ Email service configured successfully');
-    return true;
+    await testEmailConfig();
+    res.json({ 
+      success: true, 
+      message: 'Email configuration is valid and working' 
+    });
   } catch (error) {
-    console.error('❌ Email configuration error:', error.message);
-    throw error;
+    res.status(500).json({ 
+      success: false, 
+      error: 'Email configuration error', 
+      details: error.message 
+    });
   }
-};
+});
 
-// ✅ Send invoice reminder email
-export const sendInvoiceReminder = async (invoice, organization, client) => {
+// ✅ FEATURE #27: Trigger reminder check manually (admin only)
+router.post('/trigger-reminder-check', async (req, res) => {
   try {
-    if (!client?.email) {
-      throw new Error('Client email not found');
-    }
+    // Run reminder check
+    triggerRemindersNow();
 
-    const mailer = getTransporter();
-
-    // Calculate days overdue
-    const dueDate = new Date(invoice.dueDate);
-    const today = new Date();
-    const daysOverdue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
-
-    // Determine email subject
-    let emailSubject = `Payment Reminder for Invoice ${invoice.invoiceNumber}`;
-    if (daysOverdue > 0) {
-      emailSubject = `URGENT: Invoice ${invoice.invoiceNumber} is ${daysOverdue} days overdue`;
-    }
-
-    // Create HTML email body
-    const emailBody = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 600px;
-          margin: 0 auto;
-          padding: 20px;
-          border: 1px solid #ddd;
-          border-radius: 8px;
-        }
-        .header {
-          background: #2563eb;
-          color: white;
-          padding: 20px;
-          border-radius: 8px 8px 0 0;
-          text-align: center;
-        }
-        .content {
-          padding: 20px;
-          background: #f9fafb;
-        }
-        .invoice-details {
-          background: white;
-          padding: 15px;
-          border-radius: 6px;
-          margin: 15px 0;
-          border-left: 4px solid #2563eb;
-        }
-        .detail-row {
-          display: flex;
-          justify-content: space-between;
-          padding: 8px 0;
-          border-bottom: 1px solid #eee;
-        }
-        .detail-row:last-child {
-          border-bottom: none;
-        }
-        .label {
-          font-weight: bold;
-          color: #666;
-        }
-        .value {
-          color: #333;
-        }
-        .amount {
-          color: #dc2626;
-          font-weight: bold;
-          font-size: 18px;
-        }
-        .overdue-notice {
-          background: #fee2e2;
-          border: 2px solid #dc2626;
-          color: #991b1b;
-          padding: 15px;
-          border-radius: 6px;
-          margin: 15px 0;
-          text-align: center;
-          font-weight: bold;
-        }
-        .footer {
-          text-align: center;
-          font-size: 12px;
-          color: #999;
-          padding: 20px;
-          border-top: 1px solid #eee;
-        }
-        .company-info {
-          font-size: 12px;
-          color: #666;
-          margin-top: 15px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>${emailSubject}</h1>
-        </div>
-        
-        <div class="content">
-          <p>Dear ${client.companyName},</p>
-          
-          ${
-            daysOverdue > 0
-              ? `
-            <div class="overdue-notice">
-              ⚠️ This invoice is ${daysOverdue} days overdue!<br>
-              Please arrange payment immediately.
-            </div>
-          `
-              : `
-            <p>This is a friendly reminder that payment for the following invoice is due:</p>
-          `
-          }
-
-          <div class="invoice-details">
-            <div class="detail-row">
-              <span class="label">Invoice Number:</span>
-              <span class="value">${invoice.invoiceNumber}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Invoice Date:</span>
-              <span class="value">${new Date(invoice.invoiceDate).toLocaleDateString(
-                'en-IN'
-              )}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Due Date:</span>
-              <span class="value">${new Date(invoice.dueDate).toLocaleDateString(
-                'en-IN'
-              )}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Invoice Amount:</span>
-              <span class="amount">₹${invoice.totalAmount.toLocaleString(
-                'en-IN'
-              )}</span>
-            </div>
-            ${
-              invoice.paidAmount > 0
-                ? `
-              <div class="detail-row">
-                <span class="label">Paid Amount:</span>
-                <span class="value">₹${invoice.paidAmount.toLocaleString(
-                  'en-IN'
-                )}</span>
-              </div>
-              <div class="detail-row">
-                <span class="label">Balance Due:</span>
-                <span class="amount">₹${invoice.balanceAmount.toLocaleString(
-                  'en-IN'
-                )}</span>
-              </div>
-            `
-                : ''
-            }
-          </div>
-
-          <p><strong>Payment Details:</strong></p>
-          ${
-            organization?.bankDetails
-              ? `
-            <div class="invoice-details">
-              ${
-                organization.bankDetails.bankName
-                  ? `<div class="detail-row"><span class="label">Bank:</span><span class="value">${organization.bankDetails.bankName}</span></div>`
-                  : ''
-              }
-              ${
-                organization.bankDetails.accountHolderName
-                  ? `<div class="detail-row"><span class="label">Account Holder:</span><span class="value">${organization.bankDetails.accountHolderName}</span></div>`
-                  : ''
-              }
-              ${
-                organization.bankDetails.accountNumber
-                  ? `<div class="detail-row"><span class="label">Account Number:</span><span class="value">${organization.bankDetails.accountNumber}</span></div>`
-                  : ''
-              }
-              ${
-                organization.bankDetails.ifscCode
-                  ? `<div class="detail-row"><span class="label">IFSC Code:</span><span class="value">${organization.bankDetails.ifscCode}</span></div>`
-                  : ''
-              }
-              ${
-                organization.bankDetails.upiId
-                  ? `<div class="detail-row"><span class="label">UPI ID:</span><span class="value">${organization.bankDetails.upiId}</span></div>`
-                  : ''
-              }
-            </div>
-          `
-              : `<p>Bank details not configured. Please contact us for payment information.</p>`
-          }
-
-          <p style="margin-top: 20px; color: #666;">
-            If you have already sent the payment, please disregard this reminder. 
-            If you have any questions regarding this invoice, please don't hesitate to contact us.
-          </p>
-
-          <p style="margin-top: 20px;">
-            Thank you for your prompt attention to this matter.
-          </p>
-
-          <p>
-            Best regards,<br>
-            <strong>${organization.name}</strong><br>
-            ${organization.email ? `Email: ${organization.email}<br>` : ''}
-            ${organization.phone ? `Phone: ${organization.phone}` : ''}
-          </p>
-
-          <div class="company-info">
-            ${organization.gstin ? `GSTIN: ${organization.gstin}<br>` : ''}
-            ${organization.pan ? `PAN: ${organization.pan}` : ''}
-          </div>
-        </div>
-
-        <div class="footer">
-          <p>This is an automated email. Please do not reply directly to this email.</p>
-          <p>© ${new Date().getFullYear()} ${organization.name}. All rights reserved.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-    `;
-
-    // Send email
-    const mailOptions = {
-      from: process.env.SMTP_USER,
-      to: client.email,
-      cc: organization.email || undefined,
-      subject: emailSubject,
-      html: emailBody,
-      replyTo: organization.email,
-    };
-
-    console.log('📧 Sending reminder email to:', client.email);
-
-    const info = await mailer.sendMail(mailOptions);
-
-    console.log('✅ Email sent successfully:', info.messageId);
-
-    return {
+    res.json({
       success: true,
-      messageId: info.messageId,
-    };
-  } catch (error) {
-    console.error('❌ Send reminder error:', error);
-    throw error;
-  }
-};
+      message: 'Reminder check triggered. Check server logs for details.',
+    });
 
-// ✅ Send daily report email
-export const sendDailyReport = async (reportData, organization, recipientEmail) => {
+  } catch (error) {
+    console.error('Trigger reminders error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ FEATURE #31: Generate and send daily report manually
+router.post('/send-daily-report', async (req, res) => {
   try {
-    const mailer = getTransporter();
+    const organizationId = req.user.organizationId;
+    const { email } = req.body; // Optional: override recipient email
 
-    const emailBody = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          color: #333;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 600px;
-          margin: 0 auto;
-          padding: 20px;
-          border: 1px solid #ddd;
-          border-radius: 8px;
-        }
-        .header {
-          background: #2563eb;
-          color: white;
-          padding: 20px;
-          border-radius: 8px 8px 0 0;
-          text-align: center;
-        }
-        .content {
-          padding: 20px;
-          background: #f9fafb;
-        }
-        .stat-box {
-          background: white;
-          padding: 15px;
-          border-radius: 6px;
-          margin: 10px 0;
-          border-left: 4px solid #2563eb;
-        }
-        .stat-label {
-          font-size: 12px;
-          color: #666;
-          text-transform: uppercase;
-        }
-        .stat-value {
-          font-size: 24px;
-          font-weight: bold;
-          color: #2563eb;
-        }
-        .footer {
-          text-align: center;
-          font-size: 12px;
-          color: #999;
-          padding: 20px;
-          border-top: 1px solid #eee;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Daily Business Report</h1>
-          <p>${new Date().toLocaleDateString('en-IN')}</p>
-        </div>
-        
-        <div class="content">
-          <p>Hello,</p>
-          <p>Here's your daily business summary:</p>
+    const organization = await Organization.findById(organizationId);
+    const reportData = await generateDailyReport(organizationId);
 
-          <div class="stat-box">
-            <div class="stat-label">Total Invoices</div>
-            <div class="stat-value">${reportData.totalInvoices || 0}</div>
-          </div>
+    const recipientEmail = email || organization.ownerEmail || organization.email || req.user.email;
 
-          <div class="stat-box">
-            <div class="stat-label">Outstanding Amount</div>
-            <div class="stat-value">₹${(
-              reportData.outstandingAmount || 0
-            ).toLocaleString('en-IN')}</div>
-          </div>
+    if (!recipientEmail) {
+      return res.status(400).json({ error: 'No recipient email specified' });
+    }
 
-          <div class="stat-box">
-            <div class="stat-label">Overdue Invoices</div>
-            <div class="stat-value">${reportData.overdueCount || 0}</div>
-          </div>
+    await sendDailyReport(reportData, organization, recipientEmail);
 
-          <p style="margin-top: 20px;">
-            Best regards,<br>
-            <strong>${organization.name}</strong>
-          </p>
-        </div>
+    res.json({
+      success: true,
+      message: 'Daily report sent successfully',
+      sentTo: recipientEmail,
+    });
 
-        <div class="footer">
-          <p>This is an automated email report. Please do not reply to this email.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-    `;
-
-    const mailOptions = {
-      from: process.env.SMTP_USER,
-      to: recipientEmail,
-      subject: `Daily Report - ${organization.name}`,
-      html: emailBody,
-    };
-
-    console.log('📧 Sending daily report to:', recipientEmail);
-
-    const info = await mailer.sendMail(mailOptions);
-
-    console.log('✅ Daily report sent:', info.messageId);
-
-    return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Send report error:', error);
-    throw error;
+    console.error('Send daily report error:', error);
+    res.status(500).json({ 
+      error: 'Failed to send daily report', 
+      details: error.message 
+    });
   }
-};
+});
+
+// ✅ FEATURE #31: Trigger all daily reports (admin only)
+router.post('/trigger-daily-reports', async (req, res) => {
+  try {
+    triggerDailyReportNow();
+
+    res.json({
+      success: true,
+      message: 'Daily report generation triggered. Check server logs for details.',
+    });
+
+  } catch (error) {
+    console.error('Trigger daily reports error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+export default router;a
