@@ -1,128 +1,180 @@
 // ============================================
-// FILE: server/server.js
-// CORRECTED - Added Phase 2 Routes
+// FILE: server/routes/reminders.js
+// ✅ FEATURE #2 & #27: Send Payment Reminders
 // ============================================
 
 import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import connectDB from './config/database.js';
-import authRoutes from './routes/auth.js';
-import clientRoutes from './routes/clients.js';
-import invoiceRoutes from './routes/invoices.js';
-import dashboardRoutes from './routes/dashboard.js';
-import productRoutes from './routes/products.js';
-import tdsConfigRoutes from './routes/tdsconfig.js';
-import recurringInvoiceRoutes from './routes/recurringInvoices.js';
-import whatsappRoutes from './routes/whatsapp.js';
-import analyticsRoutes from './routes/analytics.js';
-import organizationRoutes from './routes/organization.js';
-import quotationRoutes from './routes/quotations.js';
-import hsnRoutes from './routes/hsn.js';
-import reminderRoutes from './routes/reminders.js';
-import { initSchedulers } from './services/scheduler.js';
+import { protect } from '../middleware/auth.js';
+import Invoice from '../models/Invoice.js';
+import Organization from '../models/Organization.js';
+import { sendInvoiceReminder, testEmailConfig } from '../services/emailService.js';
+import { triggerRemindersNow, triggerDailyReportNow } from '../services/scheduler.js';
+import { generateDailyReport } from '../services/reportGenerator.js';
+import { sendDailyReport } from '../services/emailService.js';
 
+const router = express.Router();
 
-// PHASE 2 ROUTES - NEW IMPORTS
-import paymentRoutes from './routes/payments.js';
-import purchaseOrderRoutes from './routes/purchaseOrders.js';
-import gstReportRoutes from './routes/gstReports.js';
-import creditDebitNoteRoutes from './routes/creditDebitNotes.js';
-import reportRoutes from './routes/reports.js';
-import auditLogRoutes from './routes/auditLogs.js';
-import threeWayMatchingRoutes from './routes/threeWayMatching.js';
-import smartCategorizationRoutes from './routes/smartCategorization.js';
-import ocrRoutes from './routes/ocr.js';
-import grnRoutes from './routes/grns.js';
-import userRoutes from './routes/userRoutes.js';
+router.use(protect);
 
+// ✅ FEATURE #27: Send manual reminder for specific invoice
+router.post('/invoices/:id/send-reminder', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
 
-import path from 'path';
-import { fileURLToPath } from 'url';
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organization: organizationId,
+    }).populate('client');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
 
-dotenv.config();
+    if (!invoice.client || !invoice.client.email) {
+      return res.status(400).json({ error: 'Client email not found' });
+    }
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+    const organization = await Organization.findById(organizationId);
 
-// Connect to MongoDB
-connectDB();
+    // Send reminder
+    const result = await sendInvoiceReminder(invoice, organization, invoice.client);
 
-// ✅ FEATURES #27 & #31: Initialize email schedulers
-initSchedulers();
+    // Track reminder
+    if (!invoice.remindersSent) {
+      invoice.remindersSent = [];
+    }
+    invoice.remindersSent.push({
+      sentAt: new Date(),
+      sentTo: invoice.client.email,
+      type: 'MANUAL',
+      sentBy: req.user.id,
+    });
+    await invoice.save();
 
-// Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+    res.json({
+      success: true,
+      message: 'Payment reminder sent successfully',
+      sentTo: invoice.client.email,
+      messageId: result.messageId,
+    });
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('❌ Send reminder error:', error);
+    res.status(500).json({ 
+      error: 'Failed to send reminder', 
+      details: error.message 
+    });
+  }
 });
 
-// ============================================
-// ROUTES - Phase 1 + Phase 2
-// ============================================
+// ✅ Get reminder history for an invoice
+router.get('/invoices/:id/reminder-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
 
-// Phase 1 Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/organization', organizationRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/invoices', invoiceRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
+    const invoice = await Invoice.findOne({
+      _id: id,
+      organization: organizationId,
+    }).select('remindersSent');
 
-// Phase 2 Routes - TDS & Recurring
-app.use('/api/tdsconfig', tdsConfigRoutes);
-app.use('/api/recurring-invoices', recurringInvoiceRoutes);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
 
-// Phase 2 Routes - Payments & Reports (NEW)
-app.use('/api/payments', paymentRoutes);
-app.use('/api/purchase-orders', purchaseOrderRoutes);
-app.use('/api/gst-reports', gstReportRoutes);
-app.use('/api/credit-debit-notes', creditDebitNoteRoutes);
+    res.json({
+      reminders: invoice.remindersSent || [],
+      count: invoice.remindersSent?.length || 0,
+    });
 
-// Phase 2 Routes - Analytics
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/quotations', quotationRoutes);
-app.use('/api/hsn', hsnRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/reminders', reminderRoutes);
-app.use('/api/audit-logs', auditLogRoutes);
-app.use('/api/three-way-matching', threeWayMatchingRoutes);
-app.use('/api/smart-categorization', smartCategorizationRoutes);
-app.use('/api/ocr', ocrRoutes);
-app.use('/api/grns', grnRoutes);
-app.use('/api/users', userRoutes);
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  } catch (error) {
+    console.error('Get reminder history error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : err.message,
-  });
+// ✅ Test email configuration
+router.post('/test-email', async (req, res) => {
+  try {
+    await testEmailConfig();
+    res.json({ 
+      success: true, 
+      message: 'Email configuration is valid and working' 
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: 'Email configuration error', 
+      details: error.message 
+    });
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Phase 1 Routes: Auth, Organization, Clients, Products, Invoices, Dashboard, WhatsApp`);
-  console.log(`💰 Phase 2 Routes: TDS, Payments, GST Reports, Credit/Debit Notes, Recurring, Analytics`);
+// ✅ FEATURE #27: Trigger reminder check manually (admin only)
+router.post('/trigger-reminder-check', async (req, res) => {
+  try {
+    // Run reminder check
+    triggerRemindersNow();
+
+    res.json({
+      success: true,
+      message: 'Reminder check triggered. Check server logs for details.',
+    });
+
+  } catch (error) {
+    console.error('Trigger reminders error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
+
+// ✅ FEATURE #31: Generate and send daily report manually
+router.post('/send-daily-report', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+    const { email } = req.body; // Optional: override recipient email
+
+    const organization = await Organization.findById(organizationId);
+    const reportData = await generateDailyReport(organizationId);
+
+    const recipientEmail = email || organization.ownerEmail || organization.email || req.user.email;
+
+    if (!recipientEmail) {
+      return res.status(400).json({ error: 'No recipient email specified' });
+    }
+
+    await sendDailyReport(reportData, organization, recipientEmail);
+
+    res.json({
+      success: true,
+      message: 'Daily report sent successfully',
+      sentTo: recipientEmail,
+    });
+
+  } catch (error) {
+    console.error('Send daily report error:', error);
+    res.status(500).json({ 
+      error: 'Failed to send daily report', 
+      details: error.message 
+    });
+  }
+});
+
+// ✅ FEATURE #31: Trigger all daily reports (admin only)
+router.post('/trigger-daily-reports', async (req, res) => {
+  try {
+    triggerDailyReportNow();
+
+    res.json({
+      success: true,
+      message: 'Daily report generation triggered. Check server logs for details.',
+    });
+
+  } catch (error) {
+    console.error('Trigger daily reports error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ IMPORTANT: Export the router as default
+export default router;
