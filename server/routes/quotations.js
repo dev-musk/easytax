@@ -322,4 +322,31 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
+// Generate quotation PDF
+router.get('/:id/pdf', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const quotation = await Quotation.findOne({
+      _id: id,
+      organization: organizationId,
+    }).populate('client');
+
+    if (!quotation) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+
+    const organization = await Organization.findById(organizationId);
+    const { generateQuotationPDF } = await import('../utils/quotationPdfGenerator.js');
+    const html = await generateQuotationPDF(quotation, organization);
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    console.error('Error generating quotation PDF:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

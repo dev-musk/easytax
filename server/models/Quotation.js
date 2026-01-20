@@ -23,6 +23,10 @@ const quotationItemSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  subDescription: {
+    type: String,
+    default: '',
+  },
   hsnSacCode: {
     type: String,
     required: true,
