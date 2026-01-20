@@ -77,7 +77,8 @@ export const getClients = async (req, res) => {
     }
 
     const clients = await Client.find(filter)
-      .select('clientCode companyName gstin pan contactPerson email phone billingCity billingState isTaxable isActive createdAt branches') // ✅ ADD branches
+     .select('clientCode companyName gstin pan cin contactPerson email phone landline logo billingCity billingState isTaxable isActive createdAt branches')
+
       .sort({ createdAt: -1 });
 
     res.json(clients);

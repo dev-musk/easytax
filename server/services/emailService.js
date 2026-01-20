@@ -3,21 +3,24 @@
 // ✅ FEATURES #27 & #31: Email Service (FIXED - proper ES module import)
 // ============================================
 
+
 import pkg from 'nodemailer';
 const { createTransport } = pkg;
 import { generateInvoiceReminderEmail, generateDailyReportEmail } from '../utils/emailTemplate.js';
 
-// ✅ FIX: Create transporter properly
+// ✅ Create transporter with better error handling
 const createTransporter = () => {
   try {
+    // Remove spaces from app password
+    const appPassword = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
+    
     const transporter = createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT) || 587,
-      secure: false, // true for 465, false for 587
+      service: 'gmail', // ✅ Using 'service' instead of manual config
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: appPassword,
       },
+      // ✅ FIX: Allow self-signed certificates in development
       tls: {
         rejectUnauthorized: false
       }

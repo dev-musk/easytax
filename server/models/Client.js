@@ -103,6 +103,7 @@ const clientSchema = new mongoose.Schema(
     email: String,
     phone: String,
     alternatePhone: String,
+    landline: String,
 
     // Billing Address
     billingAddress: String,
