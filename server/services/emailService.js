@@ -8,22 +8,26 @@ import pkg from 'nodemailer';
 const { createTransport } = pkg;
 import { generateInvoiceReminderEmail, generateDailyReportEmail } from '../utils/emailTemplate.js';
 
-// ✅ Create transporter with better error handling
+// ✅ Create transporter with explicit SMTP settings
 const createTransporter = () => {
   try {
-    // Remove spaces from app password
     const appPassword = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
     
     const transporter = createTransport({
-      service: 'gmail', // ✅ Using 'service' instead of manual config
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // true for 465, false for other ports
       auth: {
         user: process.env.SMTP_USER,
         pass: appPassword,
       },
-      // ✅ FIX: Allow self-signed certificates in development
       tls: {
-        rejectUnauthorized: false
-      }
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3' // ✅ Add this for Render compatibility
+      },
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
 
     return transporter;
