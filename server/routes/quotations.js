@@ -322,7 +322,14 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
-// Generate quotation PDF
+// ============================================
+// FILE: server/routes/quotations.js
+// ✅ UPDATE: PDF Generation Route
+// ============================================
+
+// Replace the existing PDF route with this:
+
+// Generate quotation PDF (for preview/print)
 router.get('/:id/pdf', async (req, res) => {
   try {
     const { id } = req.params;
@@ -338,13 +345,86 @@ router.get('/:id/pdf', async (req, res) => {
     }
 
     const organization = await Organization.findById(organizationId);
+    
+    // ✅ Import the generator function
     const { generateQuotationPDF } = await import('../utils/quotationPdfGenerator.js');
     const html = await generateQuotationPDF(quotation, organization);
 
+    // Send HTML for print preview
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch (error) {
     console.error('Error generating quotation PDF:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ NEW: Download quotation as PDF file
+router.get('/:id/download', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const quotation = await Quotation.findOne({
+      _id: id,
+      organization: organizationId,
+    }).populate('client');
+
+    if (!quotation) {
+      return res.status(404).json({ error: 'Quotation not found' });
+    }
+
+    const organization = await Organization.findById(organizationId);
+    
+    // Generate HTML
+    const { generateQuotationPDF } = await import('../utils/quotationPdfGenerator.js');
+    const html = await generateQuotationPDF(quotation, organization);
+
+    // Convert to PDF
+    const htmlPdf = await import('html-pdf-node');
+
+    const options = {
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '10mm',
+        right: '10mm',
+        bottom: '10mm',
+        left: '10mm',
+      },
+    };
+
+    const file = { content: html };
+    const pdfBuffer = await htmlPdf.default.generatePdf(file, options);
+
+    // Generate filename
+    const sanitizedCompanyName = organization.name
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+
+    const sanitizedQuotationNumber = quotation.quotationNumber.replace(/\//g, '-');
+
+    const formatStatus = (status) => {
+      return status
+        .split('_')
+        .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+        .join(' ');
+    };
+
+    const filename = `${sanitizedCompanyName}_Quotation_${sanitizedQuotationNumber}_${formatStatus(quotation.status)}.pdf`;
+
+    // Set headers for download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('PDF download error:', error);
     res.status(500).json({ error: error.message });
   }
 });

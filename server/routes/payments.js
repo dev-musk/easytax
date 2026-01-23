@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/routes/payments.js
-// Payment Management Routes WITH RAZORPAY
+// UPDATED: Invoice sync when payment deleted
 // ============================================
 
 import express from 'express';
@@ -17,13 +17,29 @@ const router = express.Router();
 
 router.use(protect);
 
+// Helper function to update invoice status
+const updateInvoiceStatus = async (invoice) => {
+  invoice.paidAmount = invoice.paidAmount || 0;
+  invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
+
+  // ✅ FIXED: Proper status logic
+  if (invoice.balanceAmount <= 0) {
+    invoice.status = 'PAID';
+  } else if (invoice.paidAmount > 0) {
+    invoice.status = 'PARTIALLY_PAID';
+  } else {
+    invoice.status = 'PENDING'; // ✅ Default to PENDING if no payments
+  }
+
+  await invoice.save();
+};
+
 // ✅ NEW: Create Razorpay Order for Online Payment
 router.post('/create-order', async (req, res) => {
   try {
     const { invoiceId } = req.body;
     const organizationId = req.user.organizationId;
 
-    // Fetch invoice
     const invoice = await Invoice.findOne({
       _id: invoiceId,
       organization: organizationId,
@@ -37,9 +53,8 @@ router.post('/create-order', async (req, res) => {
       return res.status(400).json({ error: 'Invoice is already fully paid' });
     }
 
-    // Create Razorpay order
     const orderData = {
-      amount: invoice.balanceAmount, // Amount in rupees
+      amount: invoice.balanceAmount,
       currency: 'INR',
       receipt: `INV_${invoice.invoiceNumber}_${Date.now()}`,
       notes: {
@@ -81,7 +96,6 @@ router.post('/verify-payment', async (req, res) => {
 
     const organizationId = req.user.organizationId;
 
-    // Verify signature
     const isValid = verifyRazorpaySignature({
       razorpay_order_id,
       razorpay_payment_id,
@@ -92,14 +106,12 @@ router.post('/verify-payment', async (req, res) => {
       return res.status(400).json({ error: 'Invalid payment signature' });
     }
 
-    // Fetch payment details from Razorpay
     const paymentDetails = await fetchPaymentDetails(razorpay_payment_id);
 
     if (paymentDetails.status !== 'captured') {
       return res.status(400).json({ error: 'Payment not captured' });
     }
 
-    // Fetch invoice
     const invoice = await Invoice.findOne({
       _id: invoiceId,
       organization: organizationId,
@@ -109,13 +121,16 @@ router.post('/verify-payment', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    const paymentAmount = paymentDetails.amount / 100; // Convert paise to rupees
+    const paymentAmount = paymentDetails.amount / 100;
 
-    // Generate payment number
+    // ✅ FIXED: Generate payment number
     const paymentCount = await Payment.countDocuments({ organization: organizationId });
     const paymentNumber = `PAY-${String(paymentCount + 1).padStart(5, '0')}`;
 
-    // Create payment record
+    // ✅ FIXED: Mark as primary if this is the first payment
+    const existingPayments = await Payment.countDocuments({ invoice: invoiceId });
+    const isPrimary = existingPayments === 0;
+
     const payment = await Payment.create({
       paymentNumber,
       invoice: invoiceId,
@@ -128,22 +143,13 @@ router.post('/verify-payment', async (req, res) => {
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,
       notes: `Online payment via Razorpay - ${paymentDetails.method || 'Unknown'}`,
+      isPrimary, // ✅ Set primary flag
       organization: organizationId,
     });
 
-    // Update invoice
     invoice.paidAmount = (invoice.paidAmount || 0) + paymentAmount;
-    invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
+    await updateInvoiceStatus(invoice); // ✅ Use helper
 
-    if (invoice.balanceAmount <= 0) {
-      invoice.status = 'PAID';
-    } else if (invoice.paidAmount > 0) {
-      invoice.status = 'PARTIALLY_PAID';
-    }
-
-    await invoice.save();
-
-    // Populate and return
     const populatedPayment = await Payment.findById(payment._id)
       .populate('invoice', 'invoiceNumber invoiceDate totalAmount')
       .populate('client', 'companyName');
@@ -183,9 +189,9 @@ router.get('/', async (req, res) => {
     }
 
     const payments = await Payment.find(filter)
-      .populate('invoice', 'invoiceNumber invoiceDate totalAmount')
+      .populate('invoice', 'invoiceNumber invoiceDate totalAmount balanceAmount')
       .populate('client', 'companyName')
-      .sort({ paymentDate: -1 });
+      .sort({ isPrimary: -1, paymentDate: -1 }); // ✅ Sort by primary first
 
     res.json(payments);
   } catch (error) {
@@ -203,7 +209,7 @@ router.get('/invoice/:invoiceId', async (req, res) => {
     const payments = await Payment.find({
       invoice: invoiceId,
       organization: organizationId,
-    }).sort({ paymentDate: -1 });
+    }).sort({ isPrimary: -1, paymentDate: -1 }); // ✅ Primary first
 
     res.json(payments);
   } catch (error) {
@@ -218,7 +224,6 @@ router.post('/', async (req, res) => {
     const organizationId = req.user.organizationId;
     const { invoiceId, amount, paymentDate, paymentMode, referenceNumber, bankName, notes } = req.body;
 
-    // Verify invoice exists and belongs to organization
     const invoice = await Invoice.findOne({
       _id: invoiceId,
       organization: organizationId,
@@ -228,7 +233,6 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    // Check if payment amount is valid
     if (amount <= 0) {
       return res.status(400).json({ error: 'Payment amount must be greater than zero' });
     }
@@ -239,11 +243,13 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Generate payment number
     const paymentCount = await Payment.countDocuments({ organization: organizationId });
     const paymentNumber = `PAY-${String(paymentCount + 1).padStart(5, '0')}`;
 
-    // Create payment
+    // ✅ FIXED: Mark as primary if this is the first payment
+    const existingPayments = await Payment.countDocuments({ invoice: invoiceId });
+    const isPrimary = existingPayments === 0;
+
     const payment = await Payment.create({
       paymentNumber,
       invoice: invoiceId,
@@ -254,23 +260,13 @@ router.post('/', async (req, res) => {
       referenceNumber,
       bankName,
       notes,
+      isPrimary, // ✅ Set primary flag
       organization: organizationId,
     });
 
-    // Update invoice payment status
     invoice.paidAmount = (invoice.paidAmount || 0) + parseFloat(amount);
-    invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
+    await updateInvoiceStatus(invoice); // ✅ Use helper
 
-    // Update invoice status based on payment
-    if (invoice.balanceAmount <= 0) {
-      invoice.status = 'PAID';
-    } else if (invoice.paidAmount > 0) {
-      invoice.status = 'PARTIALLY_PAID';
-    }
-
-    await invoice.save();
-
-    // Populate and return
     const populatedPayment = await Payment.findById(payment._id)
       .populate('invoice', 'invoiceNumber invoiceDate totalAmount')
       .populate('client', 'companyName');
@@ -308,7 +304,6 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    // Don't allow updating Razorpay payments
     if (payment.razorpayPaymentId) {
       return res.status(400).json({ error: 'Cannot update online payments' });
     }
@@ -316,7 +311,6 @@ router.put('/:id', async (req, res) => {
     const oldAmount = payment.amount;
     const amountDifference = parseFloat(amount) - oldAmount;
 
-    // Update payment
     payment.amount = parseFloat(amount);
     payment.paymentDate = paymentDate || payment.paymentDate;
     payment.paymentMode = paymentMode || payment.paymentMode;
@@ -325,22 +319,10 @@ router.put('/:id', async (req, res) => {
     payment.notes = notes;
     await payment.save();
 
-    // Update invoice amounts
     const invoice = await Invoice.findById(payment.invoice);
     if (invoice) {
       invoice.paidAmount = (invoice.paidAmount || 0) + amountDifference;
-      invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
-
-      // Update status
-      if (invoice.balanceAmount <= 0) {
-        invoice.status = 'PAID';
-      } else if (invoice.paidAmount > 0) {
-        invoice.status = 'PARTIALLY_PAID';
-      } else {
-        invoice.status = 'PENDING';
-      }
-
-      await invoice.save();
+      await updateInvoiceStatus(invoice); // ✅ Use helper
     }
 
     const populatedPayment = await Payment.findById(payment._id)
@@ -354,11 +336,15 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Delete payment
+// ✅ FIXED: Delete payment - SYNC WITH INVOICE
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ error: 'Invalid payment ID' });
+    }
 
     const payment = await Payment.findOne({
       _id: id,
@@ -369,39 +355,65 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    // Don't allow deleting Razorpay payments
     if (payment.razorpayPaymentId) {
-      return res.status(400).json({ error: 'Cannot delete online payments. Contact support for refunds.' });
+      return res.status(400).json({ 
+        error: 'Cannot delete online payments. Contact support for refunds.' 
+      });
     }
 
     const paymentAmount = payment.amount;
     const invoiceId = payment.invoice;
+    const wasPaymentPrimary = payment.isPrimary;
 
     // Delete payment
-    await payment.deleteOne();
+    const deletedPayment = await Payment.findByIdAndDelete(id);
 
-    // Update invoice
-    const invoice = await Invoice.findById(invoiceId);
-    if (invoice) {
-      invoice.paidAmount = (invoice.paidAmount || 0) - paymentAmount;
-      invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
-
-      // Update status
-      if (invoice.balanceAmount <= 0) {
-        invoice.status = 'PAID';
-      } else if (invoice.paidAmount > 0) {
-        invoice.status = 'PARTIALLY_PAID';
-      } else {
-        invoice.status = 'PENDING';
-      }
-
-      await invoice.save();
+    if (!deletedPayment) {
+      return res.status(500).json({ error: 'Failed to delete payment' });
     }
 
-    res.json({ message: 'Payment deleted successfully' });
+    // ✅ FIXED: Update invoice after deletion
+    const invoice = await Invoice.findById(invoiceId);
+    if (invoice) {
+      invoice.paidAmount = Math.max(0, (invoice.paidAmount || 0) - paymentAmount);
+      
+      // ✅ FIXED: Use helper to properly update status
+      await updateInvoiceStatus(invoice);
+
+      // ✅ If deleted payment was primary, mark next payment as primary
+      if (wasPaymentPrimary) {
+        const nextPayment = await Payment.findOne({ invoice: invoiceId }).sort({ paymentDate: 1 });
+        if (nextPayment) {
+          nextPayment.isPrimary = true;
+          await nextPayment.save();
+        }
+      }
+    }
+
+    return res.status(200).json({ 
+      success: true,
+      message: 'Payment deleted successfully and invoice status updated',
+      deletedPaymentId: id,
+      updatedInvoice: {
+        _id: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        totalAmount: invoice.totalAmount,
+        paidAmount: invoice.paidAmount,
+        balanceAmount: invoice.balanceAmount,
+        status: invoice.status, // ✅ Now reflects PENDING if all payments deleted
+      }
+    });
+
   } catch (error) {
     console.error('Error deleting payment:', error);
-    res.status(500).json({ error: error.message });
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid payment ID format' });
+    }
+    
+    res.status(500).json({ 
+      error: error.message || 'An error occurred while deleting the payment' 
+    });
   }
 });
 

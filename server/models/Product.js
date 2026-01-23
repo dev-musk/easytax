@@ -3,7 +3,7 @@
 // ✅ FEATURE #40 + #21: Complete Inventory Tracking
 // ============================================
 
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 // ✅ Location-based stock schema
 const stockLocationSchema = new mongoose.Schema({
@@ -52,7 +52,7 @@ const batchSchema = new mongoose.Schema({
   },
   location: {
     type: String,
-    default: 'Main Warehouse',
+    default: "Main Warehouse",
   },
   purchaseRate: {
     type: Number,
@@ -74,23 +74,23 @@ const serialNumberSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['IN_STOCK', 'SOLD', 'RETURNED', 'DAMAGED'],
-    default: 'IN_STOCK',
+    enum: ["IN_STOCK", "SOLD", "RETURNED", "DAMAGED"],
+    default: "IN_STOCK",
   },
   soldDate: {
     type: Date,
   },
   soldTo: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Client',
+    ref: "Client",
   },
   invoiceId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Invoice',
+    ref: "Invoice",
   },
   location: {
     type: String,
-    default: 'Main Warehouse',
+    default: "Main Warehouse",
   },
 });
 
@@ -99,13 +99,13 @@ const stockMovementSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: [
-      'PURCHASE',
-      'SALE',
-      'RETURN',
-      'ADJUSTMENT',
-      'TRANSFER',
-      'DAMAGED',
-      'OPENING_STOCK',
+      "PURCHASE",
+      "SALE",
+      "RETURN",
+      "ADJUSTMENT",
+      "TRANSFER",
+      "DAMAGED",
+      "OPENING_STOCK",
     ],
     required: true,
   },
@@ -130,14 +130,14 @@ const stockMovementSchema = new mongoose.Schema({
   },
   location: {
     type: String,
-    default: 'Main Warehouse',
+    default: "Main Warehouse",
   },
   batchNumber: String,
   serialNumber: String,
   notes: String,
   performedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
   },
   performedAt: {
     type: Date,
@@ -149,58 +149,59 @@ const productSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Product/Service name is required'],
+      required: [true, "Product/Service name is required"],
       trim: true,
     },
     type: {
       type: String,
-      enum: ['PRODUCT', 'SERVICE'],
-      required: [true, 'Type is required'],
-      default: 'PRODUCT',
+      enum: ["PRODUCT", "SERVICE"],
+      required: [true, "Type is required"],
+      default: "PRODUCT",
     },
     hsnSacCode: {
       type: String,
       trim: true,
-      default: '',
+      default: "",
     },
     description: {
       type: String,
       trim: true,
-      default: '',
+      default: "",
     },
+    subDescription: { type: String, default: "" },
     unit: {
       type: String,
       enum: [
-        'PCS',
-        'KG',
-        'LITER',
-        'METER',
-        'BOX',
-        'HOUR',
-        'DAY',
-        'MONTH',
-        'SET',
-        'UNIT',
+        "PCS",
+        "KG",
+        "LITER",
+        "METER",
+        "BOX",
+        "HOUR",
+        "DAY",
+        "MONTH",
+        "SET",
+        "UNIT",
       ],
-      required: [true, 'Unit is required'],
-      default: 'PCS',
+      required: [true, "Unit is required"],
+      default: "PCS",
     },
     rate: {
       type: Number,
-      required: [true, 'Rate is required'],
+      required: [true, "Rate is required"],
       default: 0,
       min: 0,
     },
     gstRate: {
       type: Number,
-      required: [true, 'GST rate is required'],
+      required: [true, "GST rate is required"],
       enum: [0, 5, 12, 18, 28],
       default: 18,
     },
     category: {
       type: String,
       trim: true,
-      default: '',
+      default: "",
     },
 
     // ============================================
@@ -287,7 +288,7 @@ const productSchema = new mongoose.Schema(
     },
     organization: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Organization',
+      ref: "Organization",
       required: true,
     },
   },
@@ -297,24 +298,24 @@ const productSchema = new mongoose.Schema(
 );
 
 // Indexes
-productSchema.index({ name: 'text', hsnSacCode: 'text', description: 'text' });
+productSchema.index({ name: "text", hsnSacCode: "text", description: "text" });
 productSchema.index({ organization: 1, isActive: 1 });
 productSchema.index({ currentStock: 1 });
-productSchema.index({ 'batches.expiryDate': 1 });
-productSchema.index({ 'serialNumbers.serialNumber': 1 });
+productSchema.index({ "batches.expiryDate": 1 });
+productSchema.index({ "serialNumbers.serialNumber": 1 });
 
 // ✅ Virtual: Is Low Stock
-productSchema.virtual('isLowStock').get(function () {
+productSchema.virtual("isLowStock").get(function () {
   return this.currentStock <= this.reorderLevel;
 });
 
 // ✅ Virtual: Is Overstock
-productSchema.virtual('isOverstock').get(function () {
+productSchema.virtual("isOverstock").get(function () {
   return this.maxStockLevel > 0 && this.currentStock > this.maxStockLevel;
 });
 
 // ✅ Virtual: Total Stock Across All Locations
-productSchema.virtual('totalLocationStock').get(function () {
+productSchema.virtual("totalLocationStock").get(function () {
   return this.stockByLocation.reduce((sum, loc) => sum + loc.quantity, 0);
 });
 
@@ -324,11 +325,11 @@ productSchema.methods.reduceStock = async function (
   reference,
   referenceId,
   userId,
-  location = 'Main Warehouse',
+  location = "Main Warehouse",
   batchNumber = null,
   serialNumber = null
 ) {
-  if (this.type === 'SERVICE') {
+  if (this.type === "SERVICE") {
     return; // Services don't have stock
   }
 
@@ -368,7 +369,7 @@ productSchema.methods.reduceStock = async function (
       (s) => s.serialNumber === serialNumber
     );
     if (serial) {
-      serial.status = 'SOLD';
+      serial.status = "SOLD";
       serial.soldDate = new Date();
       serial.invoiceId = referenceId;
     }
@@ -376,7 +377,7 @@ productSchema.methods.reduceStock = async function (
 
   // Record movement
   this.stockMovements.push({
-    type: 'SALE',
+    type: "SALE",
     quantity: -quantity,
     previousStock,
     newStock: this.currentStock,
@@ -398,11 +399,11 @@ productSchema.methods.increaseStock = async function (
   reference,
   referenceId,
   userId,
-  location = 'Main Warehouse',
+  location = "Main Warehouse",
   batchNumber = null,
   serialNumber = null
 ) {
-  if (this.type === 'SERVICE') {
+  if (this.type === "SERVICE") {
     return;
   }
 
@@ -440,14 +441,14 @@ productSchema.methods.increaseStock = async function (
       (s) => s.serialNumber === serialNumber
     );
     if (serial) {
-      serial.status = 'RETURNED';
+      serial.status = "RETURNED";
       serial.invoiceId = null;
     }
   }
 
   // Record movement
   this.stockMovements.push({
-    type: 'RETURN',
+    type: "RETURN",
     quantity: quantity,
     previousStock,
     newStock: this.currentStock,
@@ -465,7 +466,7 @@ productSchema.methods.increaseStock = async function (
 
 // ✅ Method: Check if stock available
 productSchema.methods.isStockAvailable = function (requiredQuantity) {
-  if (this.type === 'SERVICE') {
+  if (this.type === "SERVICE") {
     return true; // Services always available
   }
 
@@ -490,6 +491,6 @@ productSchema.methods.getExpiringBatches = function (days = 30) {
   );
 };
 
-const Product = mongoose.model('Product', productSchema);
+const Product = mongoose.model("Product", productSchema);
 
 export default Product;

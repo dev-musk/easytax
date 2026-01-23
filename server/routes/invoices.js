@@ -308,6 +308,52 @@ router.post(
         }
       }
 
+      // ====================================================
+      // ✅ DOCUMENT TYPE VALIDATION
+      // ====================================================
+
+      // ✅ CREDIT NOTE: Must have original invoice reference
+      if (data.invoiceType === "CREDIT_NOTE") {
+        if (!data.quotationNumber) {
+          return res.status(400).json({
+            error: "Credit Note must reference an original Tax Invoice",
+          });
+        }
+      }
+
+      // ✅ DEBIT NOTE: Must have PO reference
+
+      if (data.invoiceType === "DEBIT_NOTE") {
+        console.log(
+          "🔍 DEBIT_NOTE validation - quotationNumber:",
+          data.quotationNumber
+        );
+        if (!data.quotationNumber) {
+          console.error("❌ Debit Note missing PO reference!");
+          return res.status(400).json({
+            error: "Debit Note must reference a Purchase Order",
+          });
+        }
+      }
+
+      // ✅ DELIVERY CHALLAN: Must have Tax Invoice reference
+      if (data.invoiceType === "DELIVERY_CHALLAN") {
+        if (!data.quotationNumber) {
+          return res.status(400).json({
+            error: "Delivery Challan must reference a Tax Invoice",
+          });
+        }
+      }
+
+      // ✅ PROFORMA: Should remain DRAFT until converted
+      if (data.invoiceType === "PROFORMA") {
+        data.status = "DRAFT"; // Force DRAFT status for proforma
+      }
+
+      // ====================================================
+      // END DOCUMENT TYPE VALIDATION
+      // ====================================================
+
       if (data.invoiceType === "TAX_INVOICE") {
         console.log("🔍 Validating stock availability...");
 

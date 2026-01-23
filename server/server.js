@@ -35,6 +35,8 @@ import smartCategorizationRoutes from './routes/smartCategorization.js';
 import ocrRoutes from './routes/ocr.js';
 import grnRoutes from './routes/grns.js';
 import userRoutes from './routes/userRoutes.js';
+import purchaseInvoiceRoutes from './routes/purchaseInvoices.js';
+
 
 
 import path from 'path';
@@ -105,6 +107,8 @@ app.use('/api/smart-categorization', smartCategorizationRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/grns', grnRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/purchase-invoices', purchaseInvoiceRoutes);
+
 
 // 404 handler
 app.use((req, res) => {
@@ -124,5 +128,4 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 Phase 1 Routes: Auth, Organization, Clients, Products, Invoices, Dashboard, WhatsApp`);
-  console.log(`💰 Phase 2 Routes: TDS, Payments, GST Reports, Credit/Debit Notes, Recurring, Analytics`);
 });

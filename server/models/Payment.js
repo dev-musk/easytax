@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/models/Payment.js
-// Payment Model WITH RAZORPAY FIELDS
+// UPDATED: Add isPrimary field
 // ============================================
 
 import mongoose from 'mongoose';
@@ -37,10 +37,16 @@ const paymentSchema = new mongoose.Schema({
   bankName: String,
   notes: String,
   
+  // ✅ NEW: Mark this as primary/main payment
+  isPrimary: {
+    type: Boolean,
+    default: false,
+  },
+  
   // ✅ NEW: Razorpay Fields
   razorpayOrderId: {
     type: String,
-    sparse: true, // Allows null values with unique index
+    sparse: true,
   },
   razorpayPaymentId: {
     type: String,
@@ -64,5 +70,6 @@ paymentSchema.index({ invoice: 1 });
 paymentSchema.index({ client: 1 });
 paymentSchema.index({ razorpayPaymentId: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ organization: 1, paymentNumber: 1 }, { unique: true });
+paymentSchema.index({ invoice: 1, isPrimary: 1 }); // Find primary payment for invoice
 
 export default mongoose.model('Payment', paymentSchema);

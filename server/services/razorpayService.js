@@ -1,12 +1,11 @@
 // ============================================
 // FILE: server/services/razorpayService.js
-// Razorpay Payment Integration Service (FIXED)
+// ✅ FIXED: With Debug Logging
 // ============================================
 
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
-// ✅ Lazy initialization - only create when actually needed
 let razorpayInstance = null;
 
 const getRazorpayInstance = () => {
@@ -14,28 +13,41 @@ const getRazorpayInstance = () => {
     return razorpayInstance;
   }
 
-  // Check if keys are available
-  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  // ✅ DEBUG: Log the keys (only first/last 4 chars for security)
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  console.log('🔍 Razorpay Configuration Check:');
+  console.log('   Key ID exists:', !!keyId);
+  console.log('   Key Secret exists:', !!keySecret);
+  
+  if (keyId) {
+    console.log('   Key ID preview:', `${keyId.substring(0, 8)}...${keyId.substring(keyId.length - 4)}`);
+  }
+  if (keySecret) {
+    console.log('   Key Secret preview:', `${keySecret.substring(0, 4)}...${keySecret.substring(keySecret.length - 4)}`);
+  }
+
+  if (!keyId || !keySecret) {
     console.warn('⚠️ Razorpay keys not configured. Online payments will not work.');
     console.warn('📝 Please add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to your .env file');
     return null;
   }
 
-  // Create and cache the instance
-  razorpayInstance = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-  });
+  try {
+    razorpayInstance = new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    });
 
-  console.log('✅ Razorpay initialized successfully');
-  return razorpayInstance;
+    console.log('✅ Razorpay initialized successfully');
+    return razorpayInstance;
+  } catch (error) {
+    console.error('❌ Razorpay initialization failed:', error.message);
+    return null;
+  }
 };
 
-/**
- * Create Razorpay Order
- * @param {Object} orderData - Order details
- * @returns {Promise<Object>} Razorpay order
- */
 export const createRazorpayOrder = async (orderData) => {
   const razorpay = getRazorpayInstance();
   
@@ -45,25 +57,35 @@ export const createRazorpayOrder = async (orderData) => {
 
   try {
     const options = {
-      amount: Math.round(orderData.amount * 100), // Amount in paise (₹1 = 100 paise)
+      amount: Math.round(orderData.amount * 100),
       currency: orderData.currency || 'INR',
       receipt: orderData.receipt,
       notes: orderData.notes || {},
     };
 
+    console.log('📝 Creating Razorpay order with:', {
+      amount: options.amount,
+      currency: options.currency,
+      receipt: options.receipt,
+    });
+
     const order = await razorpay.orders.create(options);
+    
+    console.log('✅ Order created successfully:', order.id);
     return order;
   } catch (error) {
-    console.error('Razorpay order creation error:', error);
-    throw new Error('Failed to create payment order');
+    console.error('❌ Razorpay order creation error:', error);
+    
+    // ✅ Better error logging
+    if (error.statusCode === 401) {
+      console.error('🔒 Authentication failed - Your Razorpay keys are invalid or expired');
+      console.error('   Please verify your keys in Razorpay Dashboard');
+    }
+    
+    throw new Error(`Failed to create payment order: ${error.error?.description || error.message}`);
   }
 };
 
-/**
- * Verify Razorpay Payment Signature
- * @param {Object} paymentData - Payment verification data
- * @returns {Boolean} Verification result
- */
 export const verifyRazorpaySignature = (paymentData) => {
   if (!process.env.RAZORPAY_KEY_SECRET) {
     throw new Error('Razorpay secret key not configured');
@@ -72,14 +94,12 @@ export const verifyRazorpaySignature = (paymentData) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = paymentData;
 
-    // Create signature
     const body = razorpay_order_id + '|' + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(body.toString())
       .digest('hex');
 
-    // Compare signatures
     return expectedSignature === razorpay_signature;
   } catch (error) {
     console.error('Signature verification error:', error);
@@ -87,11 +107,6 @@ export const verifyRazorpaySignature = (paymentData) => {
   }
 };
 
-/**
- * Fetch Payment Details
- * @param {String} paymentId - Razorpay payment ID
- * @returns {Promise<Object>} Payment details
- */
 export const fetchPaymentDetails = async (paymentId) => {
   const razorpay = getRazorpayInstance();
   
@@ -108,12 +123,6 @@ export const fetchPaymentDetails = async (paymentId) => {
   }
 };
 
-/**
- * Initiate Refund
- * @param {String} paymentId - Razorpay payment ID
- * @param {Number} amount - Refund amount in rupees
- * @returns {Promise<Object>} Refund details
- */
 export const initiateRefund = async (paymentId, amount) => {
   const razorpay = getRazorpayInstance();
   
@@ -132,10 +141,6 @@ export const initiateRefund = async (paymentId, amount) => {
   }
 };
 
-/**
- * Check if Razorpay is configured
- * @returns {Boolean}
- */
 export const isRazorpayConfigured = () => {
   return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
 };

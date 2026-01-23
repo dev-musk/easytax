@@ -1,5 +1,6 @@
 // ============================================
 // FILE: server/models/Quotation.js
+// ✅ FEATURE #15: Lock Previously Billed Items - Product References Added
 // PHASE 4: Quotation Model
 // ============================================
 
@@ -11,6 +12,7 @@ const quotationItemSchema = new mongoose.Schema({
     enum: ['PRODUCT', 'SERVICE'],
     required: true,
   },
+  // ✅ FEATURE #15: Product reference for tracking usage
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
@@ -187,6 +189,8 @@ quotationSchema.index({ organization: 1, quotationNumber: 1 }, { unique: true })
 quotationSchema.index({ client: 1 });
 quotationSchema.index({ status: 1 });
 quotationSchema.index({ quotationDate: 1 });
+// ✅ FEATURE #15: Index for fast product usage lookups
+quotationSchema.index({ 'items.product': 1 });
 
 // Pre-save hook to check expiry
 quotationSchema.pre('save', function (next) {
@@ -196,4 +200,6 @@ quotationSchema.pre('save', function (next) {
   next();
 });
 
-export default mongoose.model('Quotation', quotationSchema);
+const Quotation = mongoose.model('Quotation', quotationSchema);
+
+export default Quotation;

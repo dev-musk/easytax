@@ -153,6 +153,25 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // ✅ Credit/Debit Note specific fields
+    reason: {
+      type: String,
+      enum: [
+        'SALES_RETURN',
+        'PURCHASE_RETURN', 
+        'DISCOUNT',
+        'OVERCHARGE',
+        'BILLING_ERROR',
+        'DAMAGED_GOODS',
+        'DEFECTIVE_GOODS',
+        'SHORT_DELIVERY',
+        'OTHER'
+      ],
+    },
+    reasonDescription: {
+      type: String,
+      trim: true,
+    },
     grnNumber: {
       type: String,
       trim: true,
@@ -514,6 +533,7 @@ const invoiceSchema = new mongoose.Schema(
         sentBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       },
     ],
+    
   },
   {
     timestamps: true,
