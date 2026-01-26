@@ -1,12 +1,14 @@
 // ============================================
 // FILE: server/controllers/authController.js
-// ✅ ENSURE: Login returns organization data
+// ✅ CORRECTED: Integrated with Role system
 // ============================================
 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Organization from '../models/Organization.js';
+import Role from '../models/Role.js';
+import { initializeDefaultRoles } from './roleController.js';
 
 // Generate JWT tokens
 const generateTokens = (userId) => {
@@ -21,7 +23,7 @@ const generateTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
-// ✅ Register
+// ✅ Register - WITH ROLE INITIALIZATION
 export const register = async (req, res) => {
   try {
     const { name, email, password, organizationName } = req.body;
@@ -38,16 +40,26 @@ export const register = async (req, res) => {
       email,
     });
 
-    // Hash password
+    // ✅ Initialize default roles for the organization
+    await initializeDefaultRoles(organization._id);
+
+    // ✅ Get the OWNER role
+    const ownerRole = await Role.findOne({
+      organization: organization._id,
+      name: 'OWNER',
+    });
+
+    // Hash password (User model will also hash, but we need to prevent double hashing)
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user with role reference
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
       organization: organization._id,
-      role: 'OWNER',
+      role: ownerRole._id,
+      legacyRole: 'OWNER', // For backward compatibility
     });
 
     // Generate tokens
@@ -60,7 +72,8 @@ export const register = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: 'OWNER',
+        roleId: ownerRole._id,
       },
       organization: {
         id: organization._id,
@@ -74,14 +87,15 @@ export const register = async (req, res) => {
   }
 };
 
-// ✅ Login - WITH ORGANIZATION DATA
+// ✅ Login - WITH ORGANIZATION AND ROLE DATA
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user and populate organization
+    // Find user and populate organization and role
     const user = await User.findOne({ email })
-      .populate('organization', 'name email gstin pan phone city state planType');
+      .populate('organization', 'name email gstin pan phone city state planType')
+      .populate('role', 'name displayName permissions features');
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -92,8 +106,8 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Account is deactivated' });
     }
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    // Verify password (using the method from User model)
+    const isValidPassword = await user.matchPassword(password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -101,7 +115,7 @@ export const login = async (req, res) => {
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user._id);
 
-    // ✅ IMPORTANT: Return complete user and organization data
+    // ✅ Return complete user, organization, and role data
     res.json({
       accessToken,
       refreshToken,
@@ -109,7 +123,9 @@ export const login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role?.name || user.legacyRole || 'USER',
+        roleId: user.role?._id,
+        roleName: user.role?.displayName,
         phone: user.phone,
         isActive: user.isActive,
       },
@@ -143,7 +159,9 @@ export const refreshToken = async (req, res) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.userId).populate('organization', 'name email');
+    const user = await User.findById(decoded.userId)
+      .populate('organization', 'name email')
+      .populate('role', 'name displayName');
 
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'Invalid refresh token' });
@@ -161,12 +179,13 @@ export const refreshToken = async (req, res) => {
   }
 };
 
-// ✅ Get Me - WITH ORGANIZATION DATA
+// ✅ Get Me - WITH ORGANIZATION AND ROLE DATA
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select('-password')
-      .populate('organization', 'name email gstin pan phone city state planType');
+      .populate('organization', 'name email gstin pan phone city state planType')
+      .populate('role', 'name displayName permissions features');
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -177,7 +196,9 @@ export const getMe = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role?.name || user.legacyRole || 'USER',
+        roleId: user.role?._id,
+        roleName: user.role?.displayName,
         phone: user.phone,
         isActive: user.isActive,
       },
@@ -199,38 +220,55 @@ export const getMe = async (req, res) => {
   }
 };
 
-// Update Profile
+// ✅ Update Profile
 export const updateProfile = async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, organizationName } = req.body;
     
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      { name, phone },
+      { 
+        name, 
+        phone,
+        ...(organizationName && { organizationName })
+      },
       { new: true, runValidators: true }
-    ).select('-password');
+    )
+      .select('-password')
+      .populate('role', 'name displayName');
 
-    res.json({ user });
+    res.json({ 
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        organizationName: user.organizationName,
+        role: user.role?.name || user.legacyRole,
+        roleName: user.role?.displayName,
+      }
+    });
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };
 
-// Change Password
+// ✅ Change Password
 export const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
     const user = await User.findById(req.user.id);
 
-    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    // Use the matchPassword method from User model
+    const isValidPassword = await user.matchPassword(currentPassword);
     if (!isValidPassword) {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
+    // Update password (will be hashed by pre-save hook)
+    user.password = newPassword;
     await user.save();
 
     res.json({ message: 'Password changed successfully' });

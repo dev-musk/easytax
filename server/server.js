@@ -36,7 +36,10 @@ import ocrRoutes from './routes/ocr.js';
 import grnRoutes from './routes/grns.js';
 import userRoutes from './routes/userRoutes.js';
 import purchaseInvoiceRoutes from './routes/purchaseInvoices.js';
-
+import receiptRoutes from './routes/receipts.js';
+import bankRoutes from './routes/banks.js';
+import csrRoutes from './routes/csrs.js';
+import roleRoutes from './routes/roles.js';
 
 
 import path from 'path';
@@ -94,7 +97,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/gst-reports', gstReportRoutes);
 app.use('/api/credit-debit-notes', creditDebitNoteRoutes);
-
+app.use('/api/banks', bankRoutes);
 // Phase 2 Routes - Analytics
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/quotations', quotationRoutes);
@@ -108,7 +111,9 @@ app.use('/api/ocr', ocrRoutes);
 app.use('/api/grns', grnRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/purchase-invoices', purchaseInvoiceRoutes);
-
+app.use('/api/receipts', receiptRoutes);
+app.use('/api/csrs', csrRoutes);
+app.use('/api/roles', roleRoutes);
 
 // 404 handler
 app.use((req, res) => {

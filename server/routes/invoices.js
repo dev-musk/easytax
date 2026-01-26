@@ -95,8 +95,14 @@ router.get("/", async (req, res) => {
     if (!search) {
       const filter = { organization: organizationId };
 
+      // ✅ FIX: Handle status filtering properly
       if (status && status !== "ALL") {
-        filter.status = status;
+        // If multiple statuses (e.g., "PENDING,PARTIALLY_PAID")
+        if (status.includes(",")) {
+          filter.status = { $in: status.split(",").map(s => s.trim()) };
+        } else {
+          filter.status = status;
+        }
       }
 
       if (clientId) {
@@ -108,16 +114,25 @@ router.get("/", async (req, res) => {
         filter.invoiceType = invoiceType;
       }
 
+      console.log("📋 Invoice filter:", filter); // Debug log
+
       const invoices = await Invoice.find(filter)
         .populate(
           "client",
           "companyName email gstin billingAddress billingCity billingState"
         )
+        .populate("items") // ✅ ADDED: Populate items for pro-rata
         .sort({ createdAt: -1 });
+
+      console.log(`✅ Found ${invoices.length} invoices`); // Debug log
 
       return res.json(invoices);
     }
 
+    // ============================================
+    // SEARCH PIPELINE (unchanged)
+    // ============================================
+    
     const searchRegex = new RegExp(search, "i");
     const searchNumber = parseFloat(search.replace(/,/g, ""));
     const isValidNumber = !isNaN(searchNumber);
@@ -194,10 +209,13 @@ router.get("/", async (req, res) => {
       },
     ];
 
+    // ✅ FIX: Improved status filter handling in pipeline
     if (status && status !== "ALL") {
-      pipeline.splice(1, 0, {
-        $match: { status: status },
-      });
+      const statusMatch = status.includes(",")
+        ? { status: { $in: status.split(",").map(s => s.trim()) } }
+        : { status: status };
+      
+      pipeline.splice(1, 0, { $match: statusMatch });
     }
 
     if (clientId) {
@@ -206,11 +224,16 @@ router.get("/", async (req, res) => {
       });
     }
 
+    console.log("🔍 Search pipeline status:", status);
+    console.log("🔍 Search pipeline clientId:", clientId);
+
     const invoices = await Invoice.aggregate(pipeline);
+
+    console.log(`✅ Found ${invoices.length} invoices from search`);
 
     res.json(invoices);
   } catch (error) {
-    console.error("Search error:", error);
+    console.error("❌ Search error:", error);
     res.status(500).json({ error: error.message });
   }
 });

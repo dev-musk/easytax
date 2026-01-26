@@ -1,7 +1,6 @@
 // ============================================
 // FILE: server/models/Client.js
-// PHASE 3 COMPLETE - With GST Treatment
-// REPLACE YOUR CURRENT FILE WITH THIS
+// ✅ ADDED: MSME/Udyam Registration Number
 // ============================================
 
 import mongoose from "mongoose";
@@ -65,33 +64,49 @@ const clientSchema = new mongoose.Schema(
       },
     },
 
+    // ✅ NEW: MSME/Udyam Registration
+    udyamNumber: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          // Format: UDYAM-XX-00-0000000
+          const udyamRegex = /^UDYAM-[A-Z]{2}-[0-9]{2}-[0-9]{7}$/;
+          return udyamRegex.test(v);
+        },
+        message: "Invalid Udyam number format (Expected: UDYAM-XX-00-0000000)",
+      },
+    },
+
+    // ✅ NEW: MSME Classification
+    msmeCategory: {
+      type: String,
+      enum: ["MICRO", "SMALL", "MEDIUM", "NOT_MSME"],
+      default: "NOT_MSME",
+    },
+
     isTaxable: {
       type: Boolean,
       default: true,
     },
 
-    // ✅ PHASE 3: GST Treatment Classification
+    // GST Treatment Classification
     gstTreatment: {
       type: String,
       enum: [
-        // Registration-Based
-        "REGULAR", // Regular registered business
-        "COMPOSITION", // Composition scheme
-        "UNREGISTERED", // Unregistered person/consumer
-        "CASUAL_TAXABLE", // Casual taxable person
-        "NRTP", // Non-resident taxable person
-
-        // Transaction-Value (B2C)
-        "B2CS", // B2C Small (≤₹2.5 lakh inter-state)
-        "B2CL", // B2C Large (>₹2.5 lakh inter-state)
-
-        // Special Supply
-        "SEZ", // SEZ supplies (zero-rated)
-        "EXPORT", // Exports (zero-rated)
-        "IMPORT", // Imports (IGST)
-
-        // Special Case
-        "REVERSE_CHARGE", // Reverse charge mechanism
+        "REGULAR",
+        "COMPOSITION",
+        "UNREGISTERED",
+        "CASUAL_TAXABLE",
+        "NRTP",
+        "B2CS",
+        "B2CL",
+        "SEZ",
+        "EXPORT",
+        "IMPORT",
+        "REVERSE_CHARGE",
       ],
       default: "REGULAR",
     },
@@ -142,13 +157,30 @@ const clientSchema = new mongoose.Schema(
       default: true,
     },
 
-    organization: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Organization",
-      required: true,
+    // Archive Fields
+    isArchived: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
-    // In server/models/Client.js - Add after existing fields:
+    
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
+    
+    archivedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    
+    archiveReason: {
+      type: String,
+      default: null,
+    },
 
+    // Branches
     branches: [
       {
         branchName: {
@@ -173,6 +205,12 @@ const clientSchema = new mongoose.Schema(
         },
       },
     ],
+
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      required: true,
+    },
   },
   {
     timestamps: true,
@@ -181,7 +219,9 @@ const clientSchema = new mongoose.Schema(
 
 // Indexes
 clientSchema.index({ organization: 1, clientCode: 1 }, { unique: true });
+clientSchema.index({ organization: 1, isArchived: 1 });
 clientSchema.index({ gstin: 1 });
+clientSchema.index({ udyamNumber: 1 }); // ✅ NEW
 clientSchema.index({ companyName: "text", contactPerson: "text" });
 
 // Pre-save hook

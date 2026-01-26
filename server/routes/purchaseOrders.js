@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/routes/purchaseOrders.js
-// ✅ FEATURE #16: PO Management Routes - WITH APPROVE
+// ✅ FIXED: Proper PO Number Generation
 // ============================================
 
 import express from 'express';
@@ -88,16 +88,20 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create PO
+// ✅ FIXED: Create PO with proper number generation
 router.post('/', async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
     const data = req.body;
 
-    const organization = await Organization.findById(organizationId);
+    // ✅ FIX: Generate PO number based on existing POs, not invoice numbers
+    const poCount = await PurchaseOrder.countDocuments({ 
+      organization: organizationId 
+    });
     
-    // Generate PO number
-    const poNumber = `PO-${String(organization.nextInvoiceNumber || 1).padStart(4, '0')}`;
+    const poNumber = `PO-${String(poCount + 1).padStart(4, '0')}`;
+    
+    console.log(`🔢 Generating PO Number: ${poNumber} (Total POs: ${poCount})`);
 
     const po = await PurchaseOrder.create({
       poNumber,
@@ -126,14 +130,24 @@ router.post('/', async (req, res) => {
       .populate('vendor')
       .populate('createdBy', 'name email');
 
+    console.log(`✅ PO ${poNumber} created successfully`);
+
     res.status(201).json(populatedPO);
   } catch (error) {
     console.error('Error creating PO:', error);
+    
+    // ✅ Better error message for duplicate key
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        error: 'Purchase Order number already exists. Please try again.' 
+      });
+    }
+    
     res.status(500).json({ error: error.message });
   }
 });
 
-// ✅ NEW ROUTE: Approve PO
+// ✅ Approve PO
 router.patch('/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
@@ -175,7 +189,7 @@ router.patch('/:id/approve', async (req, res) => {
   }
 });
 
-// ✅ NEW ROUTE: Cancel PO
+// ✅ Cancel PO
 router.patch('/:id/cancel', async (req, res) => {
   try {
     const { id } = req.params;

@@ -1,12 +1,13 @@
 // ============================================
 // FILE: server/routes/payments.js
-// UPDATED: Invoice sync when payment deleted
+// ✅ FEATURE #51: Added bank handling
 // ============================================
 
 import express from 'express';
 import { protect } from '../middleware/auth.js';
 import Payment from '../models/Payment.js';
 import Invoice from '../models/Invoice.js';
+import BankAccount from '../models/BankAccount.js';
 import {
   createRazorpayOrder,
   verifyRazorpaySignature,
@@ -22,19 +23,18 @@ const updateInvoiceStatus = async (invoice) => {
   invoice.paidAmount = invoice.paidAmount || 0;
   invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
 
-  // ✅ FIXED: Proper status logic
   if (invoice.balanceAmount <= 0) {
     invoice.status = 'PAID';
   } else if (invoice.paidAmount > 0) {
     invoice.status = 'PARTIALLY_PAID';
   } else {
-    invoice.status = 'PENDING'; // ✅ Default to PENDING if no payments
+    invoice.status = 'PENDING';
   }
 
   await invoice.save();
 };
 
-// ✅ NEW: Create Razorpay Order for Online Payment
+// Create Razorpay Order for Online Payment
 router.post('/create-order', async (req, res) => {
   try {
     const { invoiceId } = req.body;
@@ -84,7 +84,7 @@ router.post('/create-order', async (req, res) => {
   }
 });
 
-// ✅ NEW: Verify Razorpay Payment
+// Verify Razorpay Payment
 router.post('/verify-payment', async (req, res) => {
   try {
     const {
@@ -92,6 +92,7 @@ router.post('/verify-payment', async (req, res) => {
       razorpay_payment_id,
       razorpay_signature,
       invoiceId,
+      bankId, // ✅ FEATURE #51
     } = req.body;
 
     const organizationId = req.user.organizationId;
@@ -121,13 +122,27 @@ router.post('/verify-payment', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
+    // ✅ FEATURE #51: Validate bank
+    if (!bankId) {
+      return res.status(400).json({ error: 'Bank account is required' });
+    }
+
+    const bank = await BankAccount.findOne({
+      _id: bankId,
+      organization: organizationId,
+      isActive: true,
+      isArchived: false,
+    });
+
+    if (!bank) {
+      return res.status(404).json({ error: 'Bank account not found or inactive' });
+    }
+
     const paymentAmount = paymentDetails.amount / 100;
 
-    // ✅ FIXED: Generate payment number
     const paymentCount = await Payment.countDocuments({ organization: organizationId });
     const paymentNumber = `PAY-${String(paymentCount + 1).padStart(5, '0')}`;
 
-    // ✅ FIXED: Mark as primary if this is the first payment
     const existingPayments = await Payment.countDocuments({ invoice: invoiceId });
     const isPrimary = existingPayments === 0;
 
@@ -135,6 +150,7 @@ router.post('/verify-payment', async (req, res) => {
       paymentNumber,
       invoice: invoiceId,
       client: invoice.client,
+      bank: bankId, // ✅ FEATURE #51
       amount: paymentAmount,
       paymentDate: new Date(),
       paymentMode: 'ONLINE',
@@ -143,16 +159,21 @@ router.post('/verify-payment', async (req, res) => {
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,
       notes: `Online payment via Razorpay - ${paymentDetails.method || 'Unknown'}`,
-      isPrimary, // ✅ Set primary flag
+      isPrimary,
       organization: organizationId,
     });
 
     invoice.paidAmount = (invoice.paidAmount || 0) + paymentAmount;
-    await updateInvoiceStatus(invoice); // ✅ Use helper
+    await updateInvoiceStatus(invoice);
+
+    // ✅ FEATURE #51: Update bank balance
+    bank.currentBalance = (bank.currentBalance || 0) + paymentAmount;
+    await bank.save();
 
     const populatedPayment = await Payment.findById(payment._id)
       .populate('invoice', 'invoiceNumber invoiceDate totalAmount')
-      .populate('client', 'companyName');
+      .populate('client', 'companyName')
+      .populate('bank', 'accountName bankName'); // ✅ FEATURE #51
 
     res.json({
       success: true,
@@ -177,11 +198,12 @@ router.post('/verify-payment', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
-    const { invoiceId, clientId, startDate, endDate } = req.query;
+    const { invoiceId, clientId, bankId, startDate, endDate } = req.query;
 
     const filter = { organization: organizationId };
     if (invoiceId) filter.invoice = invoiceId;
     if (clientId) filter.client = clientId;
+    if (bankId) filter.bank = bankId; // ✅ FEATURE #51: Filter by bank
     if (startDate || endDate) {
       filter.paymentDate = {};
       if (startDate) filter.paymentDate.$gte = new Date(startDate);
@@ -191,7 +213,8 @@ router.get('/', async (req, res) => {
     const payments = await Payment.find(filter)
       .populate('invoice', 'invoiceNumber invoiceDate totalAmount balanceAmount')
       .populate('client', 'companyName')
-      .sort({ isPrimary: -1, paymentDate: -1 }); // ✅ Sort by primary first
+      .populate('bank', 'accountName bankName accountNumber') // ✅ FEATURE #51
+      .sort({ isPrimary: -1, paymentDate: -1 });
 
     res.json(payments);
   } catch (error) {
@@ -209,7 +232,9 @@ router.get('/invoice/:invoiceId', async (req, res) => {
     const payments = await Payment.find({
       invoice: invoiceId,
       organization: organizationId,
-    }).sort({ isPrimary: -1, paymentDate: -1 }); // ✅ Primary first
+    })
+      .populate('bank', 'accountName bankName') // ✅ FEATURE #51
+      .sort({ isPrimary: -1, paymentDate: -1 });
 
     res.json(payments);
   } catch (error) {
@@ -222,7 +247,7 @@ router.get('/invoice/:invoiceId', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const organizationId = req.user.organizationId;
-    const { invoiceId, amount, paymentDate, paymentMode, referenceNumber, bankName, notes } = req.body;
+    const { invoiceId, bankId, amount, paymentDate, paymentMode, referenceNumber, bankName, notes } = req.body;
 
     const invoice = await Invoice.findOne({
       _id: invoiceId,
@@ -231,6 +256,22 @@ router.post('/', async (req, res) => {
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // ✅ FEATURE #51: Validate bank
+    if (!bankId) {
+      return res.status(400).json({ error: 'Bank account is required' });
+    }
+
+    const bank = await BankAccount.findOne({
+      _id: bankId,
+      organization: organizationId,
+      isActive: true,
+      isArchived: false,
+    });
+
+    if (!bank) {
+      return res.status(404).json({ error: 'Bank account not found or inactive' });
     }
 
     if (amount <= 0) {
@@ -246,7 +287,6 @@ router.post('/', async (req, res) => {
     const paymentCount = await Payment.countDocuments({ organization: organizationId });
     const paymentNumber = `PAY-${String(paymentCount + 1).padStart(5, '0')}`;
 
-    // ✅ FIXED: Mark as primary if this is the first payment
     const existingPayments = await Payment.countDocuments({ invoice: invoiceId });
     const isPrimary = existingPayments === 0;
 
@@ -254,22 +294,28 @@ router.post('/', async (req, res) => {
       paymentNumber,
       invoice: invoiceId,
       client: invoice.client,
+      bank: bankId, // ✅ FEATURE #51
       amount: parseFloat(amount),
       paymentDate: paymentDate || new Date(),
       paymentMode,
       referenceNumber,
       bankName,
       notes,
-      isPrimary, // ✅ Set primary flag
+      isPrimary,
       organization: organizationId,
     });
 
     invoice.paidAmount = (invoice.paidAmount || 0) + parseFloat(amount);
-    await updateInvoiceStatus(invoice); // ✅ Use helper
+    await updateInvoiceStatus(invoice);
+
+    // ✅ FEATURE #51: Update bank balance
+    bank.currentBalance = (bank.currentBalance || 0) + parseFloat(amount);
+    await bank.save();
 
     const populatedPayment = await Payment.findById(payment._id)
       .populate('invoice', 'invoiceNumber invoiceDate totalAmount')
-      .populate('client', 'companyName');
+      .populate('client', 'companyName')
+      .populate('bank', 'accountName bankName'); // ✅ FEATURE #51
 
     res.status(201).json({
       payment: populatedPayment,
@@ -293,7 +339,7 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const organizationId = req.user.organizationId;
-    const { amount, paymentDate, paymentMode, referenceNumber, bankName, notes } = req.body;
+    const { amount, bankId, paymentDate, paymentMode, referenceNumber, bankName, notes } = req.body;
 
     const payment = await Payment.findOne({
       _id: id,
@@ -309,7 +355,42 @@ router.put('/:id', async (req, res) => {
     }
 
     const oldAmount = payment.amount;
+    const oldBankId = payment.bank.toString();
     const amountDifference = parseFloat(amount) - oldAmount;
+
+    // ✅ FEATURE #51: Handle bank change
+    if (bankId && bankId !== oldBankId) {
+      const newBank = await BankAccount.findOne({
+        _id: bankId,
+        organization: organizationId,
+        isActive: true,
+        isArchived: false,
+      });
+
+      if (!newBank) {
+        return res.status(404).json({ error: 'Bank account not found or inactive' });
+      }
+
+      // Reverse from old bank
+      const oldBank = await BankAccount.findById(oldBankId);
+      if (oldBank) {
+        oldBank.currentBalance = (oldBank.currentBalance || 0) - oldAmount;
+        await oldBank.save();
+      }
+
+      // Add to new bank
+      newBank.currentBalance = (newBank.currentBalance || 0) + parseFloat(amount);
+      await newBank.save();
+
+      payment.bank = bankId;
+    } else if (amountDifference !== 0) {
+      // ✅ FEATURE #51: Update bank balance if amount changed
+      const bank = await BankAccount.findById(payment.bank);
+      if (bank) {
+        bank.currentBalance = (bank.currentBalance || 0) + amountDifference;
+        await bank.save();
+      }
+    }
 
     payment.amount = parseFloat(amount);
     payment.paymentDate = paymentDate || payment.paymentDate;
@@ -322,12 +403,13 @@ router.put('/:id', async (req, res) => {
     const invoice = await Invoice.findById(payment.invoice);
     if (invoice) {
       invoice.paidAmount = (invoice.paidAmount || 0) + amountDifference;
-      await updateInvoiceStatus(invoice); // ✅ Use helper
+      await updateInvoiceStatus(invoice);
     }
 
     const populatedPayment = await Payment.findById(payment._id)
       .populate('invoice', 'invoiceNumber invoiceDate totalAmount')
-      .populate('client', 'companyName');
+      .populate('client', 'companyName')
+      .populate('bank', 'accountName bankName'); // ✅ FEATURE #51
 
     res.json(populatedPayment);
   } catch (error) {
@@ -336,7 +418,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// ✅ FIXED: Delete payment - SYNC WITH INVOICE
+// Delete payment - SYNC WITH INVOICE AND BANK
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -363,6 +445,7 @@ router.delete('/:id', async (req, res) => {
 
     const paymentAmount = payment.amount;
     const invoiceId = payment.invoice;
+    const bankId = payment.bank;
     const wasPaymentPrimary = payment.isPrimary;
 
     // Delete payment
@@ -372,15 +455,20 @@ router.delete('/:id', async (req, res) => {
       return res.status(500).json({ error: 'Failed to delete payment' });
     }
 
-    // ✅ FIXED: Update invoice after deletion
+    // ✅ FEATURE #51: Reverse bank balance
+    const bank = await BankAccount.findById(bankId);
+    if (bank) {
+      bank.currentBalance = Math.max(0, (bank.currentBalance || 0) - paymentAmount);
+      await bank.save();
+    }
+
+    // Update invoice after deletion
     const invoice = await Invoice.findById(invoiceId);
     if (invoice) {
       invoice.paidAmount = Math.max(0, (invoice.paidAmount || 0) - paymentAmount);
-      
-      // ✅ FIXED: Use helper to properly update status
       await updateInvoiceStatus(invoice);
 
-      // ✅ If deleted payment was primary, mark next payment as primary
+      // If deleted payment was primary, mark next payment as primary
       if (wasPaymentPrimary) {
         const nextPayment = await Payment.findOne({ invoice: invoiceId }).sort({ paymentDate: 1 });
         if (nextPayment) {
@@ -392,7 +480,7 @@ router.delete('/:id', async (req, res) => {
 
     return res.status(200).json({ 
       success: true,
-      message: 'Payment deleted successfully and invoice status updated',
+      message: 'Payment deleted successfully and invoice/bank status updated',
       deletedPaymentId: id,
       updatedInvoice: {
         _id: invoice._id,
@@ -400,7 +488,7 @@ router.delete('/:id', async (req, res) => {
         totalAmount: invoice.totalAmount,
         paidAmount: invoice.paidAmount,
         balanceAmount: invoice.balanceAmount,
-        status: invoice.status, // ✅ Now reflects PENDING if all payments deleted
+        status: invoice.status,
       }
     });
 

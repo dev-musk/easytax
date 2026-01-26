@@ -8,6 +8,8 @@ import { protect } from '../middleware/auth.js';
 import Invoice from '../models/Invoice.js';
 import RecurringInvoice from '../models/RecurringInvoice.js';
 import creditNote from '../models/CreditNote.js';
+import PurchaseInvoice from '../models/PurchaseInvoice.js';
+import Client from '../models/Client.js';
 import mongoose from 'mongoose';
 
 const router = express.Router();
@@ -485,6 +487,198 @@ router.get('/po-summary', async (req, res) => {
     res.json(report);
   } catch (error) {
     console.error('PO Summary error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/vendor-outstanding-consolidated', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+    const { vendorId, startDate, endDate } = req.query;
+
+    const matchStage = {
+      organization: new mongoose.Types.ObjectId(organizationId),
+      status: { $in: ['PENDING', 'APPROVED', 'PARTIALLY_PAID'] },
+      balanceAmount: { $gt: 0 },
+    };
+
+    if (vendorId) {
+      matchStage.vendor = new mongoose.Types.ObjectId(vendorId);
+    }
+
+    if (startDate && endDate) {
+      matchStage.piDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    // Aggregate by vendor (consolidated across all branches)
+    const consolidatedReport = await PurchaseInvoice.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$vendor',
+          totalInvoices: { $sum: 1 },
+          totalOutstanding: { $sum: '$balanceAmount' },
+          totalAmount: { $sum: '$totalAmount' },
+          totalPaid: { $sum: '$paidAmount' },
+          oldestDueDate: { $min: '$dueDate' },
+          
+          // Branch breakdown
+          branches: {
+            $push: {
+              ourBranch: '$ourBranchName',
+              ourBranchGSTIN: '$ourBranchGSTIN',
+              vendorBranch: '$vendorBranchName',
+              vendorBranchGSTIN: '$vendorBranchGSTIN',
+              piNumber: '$piNumber',
+              piDate: '$piDate',
+              dueDate: '$dueDate',
+              amount: '$totalAmount',
+              balanceAmount: '$balanceAmount',
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'clients',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'vendorInfo',
+        },
+      },
+      { $unwind: '$vendorInfo' },
+      { $sort: { totalOutstanding: -1 } },
+      {
+        $project: {
+          vendor: {
+            _id: '$vendorInfo._id',
+            companyName: '$vendorInfo.companyName',
+            email: '$vendorInfo.email',
+            gstin: '$vendorInfo.gstin',
+            contactPerson: '$vendorInfo.contactPerson',
+            phone: '$vendorInfo.phone',
+          },
+          totalInvoices: 1,
+          totalOutstanding: { $round: ['$totalOutstanding', 2] },
+          totalAmount: { $round: ['$totalAmount', 2] },
+          totalPaid: { $round: ['$totalPaid', 2] },
+          oldestDueDate: 1,
+          daysOverdue: {
+            $max: [
+              0,
+              {
+                $divide: [
+                  { $subtract: [new Date(), '$oldestDueDate'] },
+                  86400000,
+                ],
+              },
+            ],
+          },
+          branches: 1,
+        },
+      },
+    ]);
+
+    // Calculate summary
+    const summary = {
+      totalVendors: consolidatedReport.length,
+      totalOutstanding: consolidatedReport.reduce(
+        (sum, v) => sum + v.totalOutstanding,
+        0
+      ),
+      totalInvoices: consolidatedReport.reduce(
+        (sum, v) => sum + v.totalInvoices,
+        0
+      ),
+      overdueVendors: consolidatedReport.filter(
+        (v) => v.daysOverdue > 0
+      ).length,
+    };
+
+    res.json({
+      summary,
+      vendors: consolidatedReport,
+    });
+  } catch (error) {
+    console.error('Vendor Outstanding Consolidated error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// FEATURE #36: Vendor Outstanding - Branch Breakdown
+// ============================================
+router.get('/vendor-outstanding-branches/:vendorId', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+    const { vendorId } = req.params;
+
+    const matchStage = {
+      organization: new mongoose.Types.ObjectId(organizationId),
+      vendor: new mongoose.Types.ObjectId(vendorId),
+      status: { $in: ['PENDING', 'APPROVED', 'PARTIALLY_PAID'] },
+      balanceAmount: { $gt: 0 },
+    };
+
+    // Group by our branch (where purchase was made)
+    const branchBreakdown = await PurchaseInvoice.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            ourBranch: '$ourBranchName',
+            ourBranchGSTIN: '$ourBranchGSTIN',
+          },
+          totalInvoices: { $sum: 1 },
+          totalOutstanding: { $sum: '$balanceAmount' },
+          totalAmount: { $sum: '$totalAmount' },
+          invoices: {
+            $push: {
+              piNumber: '$piNumber',
+              piDate: '$piDate',
+              dueDate: '$dueDate',
+              totalAmount: '$totalAmount',
+              balanceAmount: '$balanceAmount',
+              status: '$status',
+              vendorBranch: '$vendorBranchName',
+              vendorBranchGSTIN: '$vendorBranchGSTIN',
+            },
+          },
+        },
+      },
+      { $sort: { totalOutstanding: -1 } },
+      {
+        $project: {
+          branch: {
+            name: '$_id.ourBranch',
+            gstin: '$_id.ourBranchGSTIN',
+          },
+          totalInvoices: 1,
+          totalOutstanding: { $round: ['$totalOutstanding', 2] },
+          totalAmount: { $round: ['$totalAmount', 2] },
+          invoices: 1,
+        },
+      },
+    ]);
+
+    // Get vendor info
+    const vendor = await Client.findById(vendorId).select(
+      'companyName email gstin contactPerson phone'
+    );
+
+    res.json({
+      vendor,
+      branches: branchBreakdown,
+      consolidatedTotal: branchBreakdown.reduce(
+        (sum, b) => sum + b.totalOutstanding,
+        0
+      ),
+    });
+  } catch (error) {
+    console.error('Vendor Outstanding Branches error:', error);
     res.status(500).json({ error: error.message });
   }
 });

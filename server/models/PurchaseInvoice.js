@@ -1,6 +1,6 @@
 // ============================================
 // FILE: server/models/PurchaseInvoice.js
-// Purchase Invoice Model (Bills FROM Vendors)
+// ✅ FEATURE #36: Add branch/GSTIN tracking for consolidation
 // ============================================
 
 import mongoose from 'mongoose';
@@ -49,6 +49,31 @@ const purchaseInvoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Client',
       required: true,
+    },
+    
+    // ✅ NEW: Branch/GSTIN tracking for Feature #36
+    // Which branch of OUR organization is this purchase for?
+    ourBranchGSTIN: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
+    
+    ourBranchName: {
+      type: String,
+      trim: true,
+    },
+    
+    // Which branch of the VENDOR provided this service/product?
+    vendorBranchGSTIN: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
+    
+    vendorBranchName: {
+      type: String,
+      trim: true,
     },
     
     // Link to Purchase Order (optional but recommended)
@@ -176,6 +201,9 @@ purchaseInvoiceSchema.index({ vendor: 1 });
 purchaseInvoiceSchema.index({ status: 1 });
 purchaseInvoiceSchema.index({ piDate: 1 });
 purchaseInvoiceSchema.index({ linkedPO: 1 });
+// ✅ NEW: Index for branch queries
+purchaseInvoiceSchema.index({ vendor: 1, ourBranchGSTIN: 1 });
+purchaseInvoiceSchema.index({ vendor: 1, vendorBranchGSTIN: 1 });
 
 // Pre-save hook to calculate amounts
 purchaseInvoiceSchema.pre('save', function (next) {
